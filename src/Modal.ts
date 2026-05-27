@@ -1,5 +1,36 @@
-import { App, MarkdownView, Modal, Notice, Platform } from "obsidian";
+import { App, MarkdownView, Modal, Notice, Platform, TFile } from "obsidian";
+import { detectDocument } from "../scripts/detectDocument-browser";
+import { loadOpenCV } from "./opencv-loader";
 import { CameraPluginSettings } from "./SettingsTab";
+
+async function appendToLogFile(app: App, message: string) {
+	const logFilePath = 'CameraPluginLog.md';
+	let logContent = '';
+	try {
+		const existing = app.vault.getAbstractFileByPath(logFilePath);
+		if (existing && existing instanceof TFile) {
+			logContent = await app.vault.read(existing);
+		}
+	} catch (e) {
+		new Notice('Log: Error reading existing log file: ' + ((e as Error)?.message || String(e)));
+		console.error('Log: Error reading existing log file:', e);
+	}
+	const timestamp = new Date().toISOString();
+	logContent += `\n[${timestamp}] ${message}`;
+	try {
+		const file = app.vault.getAbstractFileByPath(logFilePath);
+		if (file && file instanceof TFile) {
+			await app.vault.modify(file, logContent);
+			new Notice('Log: Updated CameraPluginLog.md');
+		} else {
+			await app.vault.create(logFilePath, logContent);
+			new Notice('Log: Created CameraPluginLog.md');
+		}
+	} catch (e) {
+		new Notice('Log: Error writing log file: ' + ((e as Error)?.message || String(e)));
+		console.error('Log: Error writing log file:', e);
+	}
+}
 
 class CameraModal extends Modal {
 	chosenFolderPath: string;
@@ -69,12 +100,110 @@ class CameraModal extends Modal {
 			scanButton.style.display = "inline-block";
 			scanButton.onclick = () => scanPicker.click();
 
-			scanPicker.onchange = () => {
-				if (!scanPicker.files?.length) return;
+			scanPicker.onchange = async () => {
+				if (!scanPicker.files?.length) {
+					const msg = "No file selected for scan.";
+					new Notice(msg);
+					await appendToLogFile(this.app, msg);
+					return;
+				}
 				const selectedFile = scanPicker.files[0];
-				selectedFile.arrayBuffer().then((buf) =>
-					saveFile(buf, true, selectedFile.name.split(" ").join("-")),
-				);
+				const fileName = selectedFile.name.split(" ").join("-");
+				let logMsg = '';
+				new Notice("Loading OpenCV.js...");
+				logMsg += 'Loading OpenCV.js...\n';
+				try {
+					// Pass app and logger to loadOpenCV to capture all loader events
+					await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
+					new Notice("OpenCV.js loaded. Reading image...");
+					logMsg += 'OpenCV.js loaded. Reading image...\n';
+				} catch (err) {
+					const msg = "Failed to load OpenCV.js: " + err.message;
+					new Notice(msg);
+					logMsg += msg + '\n';
+					await appendToLogFile(this.app, logMsg);
+					return;
+				}
+				const reader = new FileReader();
+				reader.onload = async (e) => {
+					const img = new Image();
+					img.onload = async () => {
+						new Notice("Image loaded. Running document detection...");
+						logMsg += 'Image loaded. Running document detection...\n';
+						try {
+							const result = detectDocument(img);
+							logMsg += `Document detected!\nCorners (tl → tr → br → bl):\n`;
+							const labels = ["top-left", "top-right", "bottom-right", "bottom-left"];
+							result.corners.forEach((pt, i) => {
+								logMsg += `  ${labels[i].padEnd(12)} x=${pt.x}, y=${pt.y}\n`;
+							});
+							logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
+							// Convert warped canvas to Blob
+							result.warped.toBlob(async (blob) => {
+								if (!blob) {
+									const msg = "Failed to convert warped image to blob";
+									new Notice(msg);
+									logMsg += msg + '\n';
+									await appendToLogFile(this.app, logMsg);
+									return;
+								}
+								const croppedName = `cropped-${fileName.replace(/\.[^.]+$/, '')}.png`;
+								await saveFile(await blob.arrayBuffer(), true, croppedName);
+								logMsg += `Saved cropped image as ${croppedName}\n`;
+								// Insert log into note
+								if (view) {
+									const cursor = view.editor.getCursor();
+									view.editor.replaceRange(
+										`\n\n---\n${logMsg}\n![[${this.chosenFolderPath}/${croppedName}]]\n`,
+										cursor
+									);
+								}
+								// Show in UI
+								const resultDiv = document.createElement('div');
+								resultDiv.style.marginTop = '16px';
+								const label = document.createElement('div');
+								label.textContent = 'Detected Document:';
+								label.style.fontWeight = 'bold';
+								resultDiv.appendChild(label);
+								resultDiv.appendChild(result.warped);
+								contentEl.appendChild(resultDiv);
+								new Notice("Document detected and saved!");
+								await appendToLogFile(this.app, logMsg);
+							}, 'image/png');
+						} catch (err) {
+							logMsg += `Document detection failed: ${err.message}\n`;
+							new Notice("Document detection failed: " + err.message);
+							if (view) {
+								const cursor = view.editor.getCursor();
+								view.editor.replaceRange(`\n\n---\n${logMsg}\n`, cursor);
+							}
+							if (window.console && window.console.error) {
+								console.error("Document detection error:", err);
+							}
+							await appendToLogFile(this.app, logMsg);
+						}
+					};
+					img.onerror = async () => {
+						const msg = "Failed to load image for detection";
+						new Notice(msg);
+						logMsg += msg + '\n';
+						if (window.console && window.console.error) {
+							console.error("Image failed to load for detection");
+						}
+						await appendToLogFile(this.app, logMsg);
+					};
+					img.src = e.target.result as string;
+				};
+				reader.onerror = async (e) => {
+					const msg = "Failed to read image file for detection";
+					new Notice(msg);
+					logMsg += msg + '\n';
+					if (window.console && window.console.error) {
+						console.error("FileReader error:", e);
+					}
+					await appendToLogFile(this.app, logMsg);
+				};
+				reader.readAsDataURL(selectedFile);
 			};
 		}
 
