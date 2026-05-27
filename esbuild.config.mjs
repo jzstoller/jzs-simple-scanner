@@ -1,6 +1,6 @@
+import builtins from 'builtin-modules';
 import esbuild from "esbuild";
 import process from "process";
-import builtins from 'builtin-modules'
 
 const banner =
 `/*
@@ -48,5 +48,5 @@ esbuild.build({
 	logLevel: "info",
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,
-	outfile: '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs_obsidian-camera/main.js',
+	outfile: '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs_scan/main.js',
 }).catch(() => process.exit(1));

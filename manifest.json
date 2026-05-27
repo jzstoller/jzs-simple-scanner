@@ -1,6 +1,6 @@
 {
-	"id": "jzs_obsidian-camera",
-	"name": "Camera_JZS",
+	"id": "jzs_scan",
+	"name": "Scan_JZS",
 	"version": "0.1.0",
 	"minAppVersion": "0.14.6",
 	"description": "JZS Camera plugin for Obsidian",

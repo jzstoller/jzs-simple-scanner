@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Detector Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .controls {
+            margin-bottom: 30px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        button {
+            padding: 10px 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        .status {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .result-panel {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .result-panel h3 {
+            background: #f0f0f0;
+            padding: 10px;
+            font-size: 14px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        canvas, img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        .corners {
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .corner-point {
+            padding: 5px;
+            margin: 5px 0;
+            background: #f9f9f9;
+            border-left: 3px solid #2563eb;
+        }
+        input[type="range"] {
+            pointer-events: auto;
+            cursor: pointer;
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #d3d3d3;
+            border-radius: 5px;
+            outline: none;
+            accent-color: #2563eb;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            pointer-events: auto;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-webkit-slider-thumb:active {
+            transform: scale(1.2);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            border: 2px solid white;
+            pointer-events: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-moz-range-thumb:active {
+            transform: scale(1.2);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        input[type="range"]::-moz-range-track {
+            background: transparent;
+            border: none;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #d3d3d3;
+            height: 8px;
+            border-radius: 5px;
+        }
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 Document Detection Test</h1>
+        
+        <div class="controls">
+            <button onclick="document.getElementById('fileInput').click()">📁 Choose Image</button>
+            <button onclick="testWithURL()">🔗 Load from URL</button>
+        </div>
+        
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+        
+        <div class="status" id="status">Ready to load an image...</div>
+        
+        <div class="results" id="results"></div>
+    </div>
+
+    <script src="node_modules/@techstark/opencv-js/dist/opencv.js"></script>
+    <script>
+        // Import types
+        class Corner {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+            }
+        }
+
+        // Utility functions
+        function dist(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function ptsFromMat(mat) {
+            const pts = [];
+            for (let i = 0; i < 4; i++) {
+                pts.push(new Corner(mat.intPtr(i, 0)[0], mat.intPtr(i, 0)[1]));
+            }
+            return pts;
+        }
+
+        function isValidQuad(pts) {
+            // Check for near-duplicate points (degenerate shapes)
+            for (let i = 0; i < pts.length; i++) {
+                for (let j = i + 1; j < pts.length; j++) {
+                    if (dist(pts[i], pts[j]) < 10) return false;
+                }
+            }
+            
+            const ordered = orderPoints(pts);
+            const [tl, tr, br, bl] = ordered;
+            
+            // Get all 4 side lengths
+            const topDist = dist(tl, tr);
+            const bottomDist = dist(bl, br);
+            const leftDist = dist(tl, bl);
+            const rightDist = dist(tr, br);
+            
+            // Check aspect ratio - documents are typically 0.5 to 2.5 (portrait to landscape)
+            // Check aspect ratio - documents are typically 0.3 to 3.0 (portrait to landscape)
+            const widthAvg = (topDist + bottomDist) / 2;
+            const heightAvg = (leftDist + rightDist) / 2;
+            const aspectRatio = widthAvg / heightAvg;
+            
+            if (aspectRatio < 0.3 || aspectRatio > 3.0) return false;
+            
+            // Check that opposite sides are similar (reject trapezoids)
+            // Top and bottom should be similar length
+            const topBottomRatio = Math.max(topDist, bottomDist) / Math.min(topDist, bottomDist);
+            if (topBottomRatio > 1.5) return false;  // more strict than before
+            
+            // Left and right should be similar length
+            const leftRightRatio = Math.max(leftDist, rightDist) / Math.min(leftDist, rightDist);
+            if (leftRightRatio > 1.5) return false;
+            
+            // Check that all sides have reasonable length (not tiny)
+            const minSideLength = Math.min(topDist, bottomDist, leftDist, rightDist);
+            if (minSideLength < 20) return false;
+            
+            return true;
+        }
+
+        function orderPoints(pts) {
+            const sorted = [...pts].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+            const tl = sorted[0];
+            const br = sorted[3];
+            const [bl, tr] = sorted.slice(1, 3).sort((a, b) => a.x - b.x);
+            return [tl, tr, br, bl];
+        }
+
+        function buildTransform(pts) {
+            const [tl, tr, br, bl] = pts;
+            const w = Math.max(dist(tl, tr), dist(bl, br));
+            const h = Math.max(dist(tl, bl), dist(tr, br));
+            const srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                tl.x, tl.y,
+                tr.x, tr.y,
+                br.x, br.y,
+                bl.x, bl.y,
+            ]);
+            const dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                0,     0,
+                w - 1, 0,
+                w - 1, h - 1,
+                0,     h - 1,
+            ]);
+            const M = cv.getPerspectiveTransform(srcMat, dstMat);
+            srcMat.delete();
+            dstMat.delete();
+            return { M, w, h };
+        }
+
+        function detectDocument(imageSource, kernelSizeIdx = 2, sigma = 0, blockSizeIdx = 5, threshConstant = 2, cannyThresh1 = 75, cannyThresh2 = 200) {
+            // Pre-draw to an explicit canvas
+            const naturalW = imageSource.naturalWidth || imageSource.width;
+            const naturalH = imageSource.naturalHeight || imageSource.height;
+            const srcCanvas = document.createElement('canvas');
+            srcCanvas.width = naturalW;
+            srcCanvas.height = naturalH;
+            const srcCtx = srcCanvas.getContext('2d');
+            srcCtx.drawImage(imageSource, 0, 0);
+
+            const src = cv.imread(srcCanvas);
+
+            // Scale down to max 1500px
+            const MAX_DIM = 1500;
+            const scaleFactor = Math.min(MAX_DIM / src.cols, MAX_DIM / src.rows, 1.0);
+            let small = new cv.Mat();
+            if (scaleFactor < 1.0) {
+                cv.resize(src, small, new cv.Size(Math.round(src.cols * scaleFactor), Math.round(src.rows * scaleFactor)));
+            } else {
+                src.copyTo(small);
+            }
+
+            // Step 1: Grayscale
+            let gray = new cv.Mat();
+            cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY, 0);
+            const grayCanvas = document.createElement('canvas');
+            grayCanvas.width = gray.cols;
+            grayCanvas.height = gray.rows;
+            cv.imshow(grayCanvas, gray);
+
+            // Step 2: Blur
+            let blurred = new cv.Mat();
+            // Convert kernelSizeIdx to actual kernel size: 1->3, 2->5, 3->7, etc.
+            const kernelSizes = [3, 5, 7, 9, 11, 13, 15];
+            const ksize = kernelSizes[kernelSizeIdx] || 5;
+            cv.GaussianBlur(gray, blurred, new cv.Size(ksize, ksize), sigma);
+            const blurredCanvas = document.createElement('canvas');
+            blurredCanvas.width = blurred.cols;
+            blurredCanvas.height = blurred.rows;
+            cv.imshow(blurredCanvas, blurred);
+
+            // Step 3: Adaptive threshold
+            let binary = new cv.Mat();
+            // Convert blockSizeIdx to actual block size: 1->3, 2->5, 3->7, etc.
+            const blockSizes = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21];
+            const blockSize = blockSizes[blockSizeIdx] || 11;
+            cv.adaptiveThreshold(blurred, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, threshConstant);
+            const binaryCanvas = document.createElement('canvas');
+            binaryCanvas.width = binary.cols;
+            binaryCanvas.height = binary.rows;
+            cv.imshow(binaryCanvas, binary);
+
+            // Step 4: Canny edges on the threshold
+            let edges = new cv.Mat();
+            cv.Canny(binary, edges, cannyThresh1, cannyThresh2);
+            const edgesCanvas = document.createElement('canvas');
+            edgesCanvas.width = edges.cols;
+            edgesCanvas.height = edges.rows;
+            cv.imshow(edgesCanvas, edges);
+
+            // Find contours on edges
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+            // Find the largest valid 4-point contour
+            const minArea = small.cols * small.rows * 0.03;
+            let maxArea = minArea;
+            let bestContour = null;
+            let selectedCorners = null;
+            const rejectionLog = [];
+
+            for (let i = 0; i < contours.size(); i++) {
+                const cnt = contours.get(i);
+                const peri = cv.arcLength(cnt, true);
+                const approx = new cv.Mat();
+                // More aggressive epsilon to force simplification to 4 points
+                cv.approxPolyDP(cnt, approx, 0.05 * peri, true);
+                const area = cv.contourArea(approx);
+                
+                if (approx.rows === 4) {
+                    const pts = ptsFromMat(approx);
+                    const isValid = isValidQuad(pts);
+                    if (!isValid) {
+                        // Log why it was rejected
+                        const ordered = orderPoints(pts);
+                        const [tl, tr, br, bl] = ordered;
+                        const topDist = dist(tl, tr);
+                        const bottomDist = dist(bl, br);
+                        const leftDist = dist(tl, bl);
+                        const rightDist = dist(tr, br);
+                        const widthAvg = (topDist + bottomDist) / 2;
+                        const heightAvg = (leftDist + rightDist) / 2;
+                        const aspectRatio = widthAvg / heightAvg;
+                        rejectionLog.push(`Contour ${i}: area=${Math.round(area)}, aspect=${aspectRatio.toFixed(2)}, REJECTED`);
+                    }
+                    
+                    if (isValid && area > maxArea) {
+                        maxArea = area;
+                        if (bestContour) bestContour.delete();
+                        bestContour = approx.clone();
+                        selectedCorners = pts;
+                        rejectionLog.push(`Contour ${i}: area=${Math.round(area)}, SELECTED`);
+                    }
+                } else {
+                    rejectionLog.push(`Contour ${i}: ${approx.rows} points (not 4-point)`);
+                }
+                approx.delete();
+                cnt.delete();
+            }
+
+            // Store rejection log in result for display
+            const contourDebugLog = rejectionLog;
+
+            // Step 5: Draw all contours + highlight selected one
+            const contoursCanvas = document.createElement('canvas');
+            contoursCanvas.width = edges.cols;
+            contoursCanvas.height = edges.rows;
+            const contoursCtx = contoursCanvas.getContext('2d');
+            contoursCtx.fillStyle = '#000';
+            contoursCtx.fillRect(0, 0, contoursCanvas.width, contoursCanvas.height);
+
+            // Draw all contours in gray
+            contoursCtx.strokeStyle = '#666666';
+            contoursCtx.lineWidth = 1;
+            for (let i = 0; i < contours.size(); i++) {
+                const cnt = contours.get(i);
+                const area = cv.contourArea(cnt);
+                if (area > minArea) {
+                    contoursCtx.beginPath();
+                    for (let j = 0; j < cnt.rows; j++) {
+                        const x = cnt.intPtr(j, 0)[0];
+                        const y = cnt.intPtr(j, 0)[1];
+                        if (j === 0) contoursCtx.moveTo(x, y);
+                        else contoursCtx.lineTo(x, y);
+                    }
+                    contoursCtx.closePath();
+                    contoursCtx.stroke();
+                }
+                cnt.delete();
+            }
+
+            // Highlight the selected contour in red/bright green
+            if (bestContour) {
+                contoursCtx.strokeStyle = '#00ff00';
+                contoursCtx.lineWidth = 3;
+                contoursCtx.beginPath();
+                for (let j = 0; j < bestContour.rows; j++) {
+                    const x = bestContour.intPtr(j, 0)[0];
+                    const y = bestContour.intPtr(j, 0)[1];
+                    if (j === 0) contoursCtx.moveTo(x, y);
+                    else contoursCtx.lineTo(x, y);
+                }
+                contoursCtx.closePath();
+                contoursCtx.stroke();
+
+                // Draw corner points of selected contour
+                if (selectedCorners) {
+                    const colors = ['#ff2a2a', '#2a7fff', '#2aff2a', '#ffea2a'];
+                    selectedCorners.forEach((pt, i) => {
+                        contoursCtx.fillStyle = colors[i];
+                        contoursCtx.beginPath();
+                        contoursCtx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
+                        contoursCtx.fill();
+                        contoursCtx.strokeStyle = '#fff';
+                        contoursCtx.lineWidth = 1;
+                        contoursCtx.stroke();
+                    });
+                }
+            }
+
+            // Cleanup
+            small.delete(); gray.delete(); blurred.delete(); binary.delete(); edges.delete();
+            contours.delete(); hierarchy.delete();
+
+            let warpedCanvas, corners;
+            const MAX_WARP_DIM = 2000;
+            const warpScale = Math.min(MAX_WARP_DIM / src.cols, MAX_WARP_DIM / src.rows, 1.0);
+
+            if (bestContour) {
+                const rawPts = ptsFromMat(bestContour);
+                bestContour.delete();
+                const inv = 1 / scaleFactor;
+                const scaledPts = rawPts.map(p => new Corner(Math.round(p.x * inv), Math.round(p.y * inv)));
+                corners = orderPoints(scaledPts);
+
+                let warpSrc = src;
+                let warpCorners = corners;
+                if (warpScale < 1.0) {
+                    warpSrc = new cv.Mat();
+                    cv.resize(src, warpSrc, new cv.Size(
+                        Math.round(src.cols * warpScale),
+                        Math.round(src.rows * warpScale)
+                    ));
+                    warpCorners = corners.map(p => new Corner(
+                        Math.round(p.x * warpScale),
+                        Math.round(p.y * warpScale)
+                    ));
+                }
+
+                const { M, w, h } = buildTransform(warpCorners);
+                let dst = new cv.Mat();
+                cv.warpPerspective(warpSrc, dst, M, new cv.Size(Math.round(w), Math.round(h)));
+                M.delete();
+                if (warpSrc !== src) warpSrc.delete();
+
+                warpedCanvas = document.createElement('canvas');
+                warpedCanvas.width = Math.round(w);
+                warpedCanvas.height = Math.round(h);
+                cv.imshow(warpedCanvas, dst);
+                dst.delete();
+            } else {
+                corners = [
+                    new Corner(0, 0),
+                    new Corner(src.cols - 1, 0),
+                    new Corner(src.cols - 1, src.rows - 1),
+                    new Corner(0, src.rows - 1),
+                ];
+
+                let fallbackSrc = src;
+                if (warpScale < 1.0) {
+                    fallbackSrc = new cv.Mat();
+                    cv.resize(src, fallbackSrc, new cv.Size(
+                        Math.round(src.cols * warpScale),
+                        Math.round(src.rows * warpScale)
+                    ));
+                }
+                warpedCanvas = document.createElement('canvas');
+                warpedCanvas.width = fallbackSrc.cols;
+                warpedCanvas.height = fallbackSrc.rows;
+                cv.imshow(warpedCanvas, fallbackSrc);
+                if (fallbackSrc !== src) fallbackSrc.delete();
+            }
+
+            src.delete();
+
+            return {
+                corners,
+                warped: warpedCanvas,
+                width: warpedCanvas.width,
+                height: warpedCanvas.height,
+                debugImages: {
+                    grayscale: grayCanvas,
+                    blurred: blurredCanvas,
+                    binary: binaryCanvas,
+                    edges: edgesCanvas,
+                    contours: contoursCanvas,
+                },
+                contourLog: contourDebugLog
+            };
+        }
+
+        function createDebugOverlay(imageSource, corners) {
+            const naturalW = imageSource.naturalWidth || imageSource.width;
+            const naturalH = imageSource.naturalHeight || imageSource.height;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = naturalW;
+            canvas.height = naturalH;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(imageSource, 0, 0);
+
+            const colors = ['#ff2a2a', '#2a7fff', '#2aff2a', '#ffea2a'];
+
+            ctx.strokeStyle = '#ff2a2a';
+            ctx.lineWidth = 6;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y);
+            ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath();
+            ctx.stroke();
+
+            const radius = 16;
+            corners.forEach((pt, i) => {
+                ctx.fillStyle = colors[i];
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+
+            return canvas;
+        }
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    console.log('Image loaded via file picker, currentImage set:', currentImage.width, 'x', currentImage.height);
+                    updateStatus('Processing...');
+                    setTimeout(() => runDetection(img), 100);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function testWithURL() {
+            const url = prompt('Enter image URL:');
+            if (!url) return;
+            updateStatus('Loading image...');
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                currentImage = img;
+                console.log('Image loaded via URL, currentImage set:', currentImage.width, 'x', currentImage.height);
+                updateStatus('Processing...');
+                setTimeout(() => runDetection(img), 100);
+            };
+            img.onerror = () => updateStatus('❌ Failed to load image');
+            img.src = url;
+        }
+
+        let currentImage = null;
+
+        function runDetection(imageSource) {
+            try {
+                console.log('🔍 runDetection: START');
+                const t0 = performance.now();
+                // Get input values with defaults if inputs don't exist yet
+                const kernelSizeInput = document.getElementById('kernelSizeInput');
+                const kernelSizeIdx = kernelSizeInput ? parseInt(kernelSizeInput.value) : 6;
+                
+                const sigmaInput = document.getElementById('sigmaInput');
+                const sigma = sigmaInput ? parseFloat(sigmaInput.value) : 1.5;
+                
+                const blockSizeInput = document.getElementById('blockSizeInput');
+                const blockSizeIdx = blockSizeInput ? parseInt(blockSizeInput.value) : 5;
+                
+                const threshConstantInput = document.getElementById('threshConstantInput');
+                const threshConstant = threshConstantInput ? parseInt(threshConstantInput.value) : 2;
+                
+                const cannyThresh1Input = document.getElementById('cannyThresh1Input');
+                const cannyThresh1 = cannyThresh1Input ? parseInt(cannyThresh1Input.value) : 75;
+                
+                const cannyThresh2Input = document.getElementById('cannyThresh2Input');
+                const cannyThresh2 = cannyThresh2Input ? parseInt(cannyThresh2Input.value) : 200;
+                
+                const result = detectDocument(imageSource, kernelSizeIdx, sigma, blockSizeIdx, threshConstant, cannyThresh1, cannyThresh2);
+                const elapsed = (performance.now() - t0).toFixed(0);
+
+                const overlayCanvas = createDebugOverlay(imageSource, result.corners);
+
+                const params = { kernelSizeIdx, sigma, blockSizeIdx, threshConstant, cannyThresh1, cannyThresh2 };
+                displayResults(imageSource, result, overlayCanvas, elapsed, params);
+                updateStatus(`✅ Detection completed in ${elapsed}ms`);
+                console.log('🔍 runDetection: COMPLETE');
+            } catch (err) {
+                updateStatus(`❌ Error: ${err.message}`);
+                console.error(err);
+            }
+        }
+
+        function displayResults(original, result, overlay, elapsed, params = {}) {
+            const { kernelSizeIdx = 6, sigma = 1.5, blockSizeIdx = 5, threshConstant = 2, cannyThresh1 = 75, cannyThresh2 = 200 } = params;
+            console.log('📊 displayResults called, elapsed:', elapsed);
+            const labels = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
+            
+            const html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px;">
+                    <div class="result-panel">
+                        <h3>1. Grayscale</h3>
+                        <canvas id="grayscale" width="${result.debugImages?.grayscale.width || 300}" height="${result.debugImages?.grayscale.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel" style="background: #f9f9f9;">
+                        <h3>Gaussian Blur Settings</h3>
+                        <div style="padding: 15px;">
+                            <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                                <label style="font-size: 13px; min-width: 100px;">Kernel Size:</label>
+                                <input type="number" id="kernelSizeInput" min="1" max="7" value="${kernelSizeIdx}" style="width: 60px; padding: 5px; font-size: 13px;">
+                                <small style="color: #666;">1=3×3, 2=5×5, 3=7×7, 4=9×9, 5=11×11, 6=13×13, 7=15×15</small>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <label style="font-size: 13px; min-width: 100px;">Sigma:</label>
+                                <input type="number" id="sigmaInput" min="0" max="50" value="${sigma}" step="0.5" style="width: 60px; padding: 5px; font-size: 13px;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-panel">
+                        <h3>2. Blurred</h3>
+                        <canvas id="blurred" width="${result.debugImages?.blurred.width || 300}" height="${result.debugImages?.blurred.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel" style="background: #f9f9f9;">
+                        <h3>Adaptive Threshold Settings</h3>
+                        <div style="padding: 15px;">
+                            <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                                <label style="font-size: 13px; min-width: 100px;">Block Size:</label>
+                                <input type="number" id="blockSizeInput" min="1" max="10" value="${blockSizeIdx}" style="width: 60px; padding: 5px; font-size: 13px;">
+                                <small style="color: #666;">1=3, 2=5, 3=7, 4=9, 5=11, 6=13, 7=15, 8=17, 9=19, 10=21</small>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <label style="font-size: 13px; min-width: 100px;">Constant:</label>
+                                <input type="number" id="threshConstantInput" min="-20" max="20" value="${threshConstant}" style="width: 60px; padding: 5px; font-size: 13px;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-panel">
+                        <h3>3. Adaptive Threshold</h3>
+                        <canvas id="binary" width="${result.debugImages?.binary?.width || 300}" height="${result.debugImages?.binary?.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel" style="background: #f9f9f9;">
+                        <h3>Canny Edge Detection Settings</h3>
+                        <div style="padding: 15px;">
+                            <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                                <label style="font-size: 13px; min-width: 100px;">Threshold 1:</label>
+                                <input type="number" id="cannyThresh1Input" min="0" max="500" value="${cannyThresh1}" style="width: 60px; padding: 5px; font-size: 13px;">
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <label style="font-size: 13px; min-width: 100px;">Threshold 2:</label>
+                                <input type="number" id="cannyThresh2Input" min="0" max="500" value="${cannyThresh2}" style="width: 60px; padding: 5px; font-size: 13px;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-panel">
+                        <h3>4. Canny Edges</h3>
+                        <canvas id="edges" width="${result.debugImages?.edges?.width || 300}" height="${result.debugImages?.edges?.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>5. Contours (green = selected, gray = other)</h3>
+                        <canvas id="contours" width="${result.debugImages?.contours.width || 300}" height="${result.debugImages?.contours.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Contour Selection Debug Log</h3>
+                        <div style="padding: 10px; font-family: monospace; font-size: 12px; line-height: 1.5; background: #f9f9f9; max-height: 300px; overflow-y: auto;">
+                            ${result.contourLog?.map(line => `<div>${line}</div>`).join('') || 'No log'}
+                        </div>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Original with Crop Box</h3>
+                        <canvas id="overlay" width="${overlay.width}" height="${overlay.height}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Warped/Cropped Document</h3>
+                        <canvas id="warped" width="${result.width}" height="${result.height}" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Detection Results (${elapsed}ms)</h3>
+                        <div class="corners">
+                            <div style="margin-bottom:10px;"><strong>Corners (tl → tr → br → bl):</strong></div>
+                            ${result.corners.map((pt, i) => `
+                                <div class="corner-point">
+                                    <strong>${labels[i]}</strong><br>
+                                    x=${Math.round(pt.x)}, y=${Math.round(pt.y)}
+                                </div>
+                            `).join('')}
+                            <div style="margin-top:15px;border-top:1px solid #e0e0e0;padding-top:10px;">
+                                <strong>Warped size:</strong> ${result.width} × ${result.height}px
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('results').innerHTML = html;
+            
+            // Attach event listeners to number inputs
+            ['kernelSizeInput', 'sigmaInput', 'blockSizeInput', 'threshConstantInput', 'cannyThresh1Input', 'cannyThresh2Input'].forEach(id => {
+                const input = document.getElementById(id);
+                if (input) {
+                    input.addEventListener('change', () => {
+                        if (currentImage) {
+                            runDetection(currentImage);
+                        }
+                    });
+                }
+            });
+            
+            // Draw debug images with proper sizing
+            if (result.debugImages) {
+                const drawCanvasToElement = (elementId, sourceCanvas) => {
+                    const el = document.getElementById(elementId);
+                    if (el) {
+                        el.width = sourceCanvas.width;
+                        el.height = sourceCanvas.height;
+                        const ctx = el.getContext('2d');
+                        ctx.drawImage(sourceCanvas, 0, 0);
+                    }
+                };
+                
+                drawCanvasToElement('grayscale', result.debugImages.grayscale);
+                drawCanvasToElement('blurred', result.debugImages.blurred);
+                drawCanvasToElement('binary', result.debugImages.binary);
+                drawCanvasToElement('edges', result.debugImages.edges);
+                drawCanvasToElement('contours', result.debugImages.contours);
+            }
+            
+            // Draw main results
+            const overlayCtx = document.getElementById('overlay').getContext('2d');
+            overlayCtx.drawImage(overlay, 0, 0);
+            
+            const warpedCtx = document.getElementById('warped').getContext('2d');
+            warpedCtx.drawImage(result.warped, 0, 0);
+        }
+
+        function updateStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        // Setup slider event listeners
+        function updateSliderFill(slider) {
+            if (!slider) return;
+            const value = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+            slider.style.background = `linear-gradient(to right, #2563eb 0%, #2563eb ${value}%, #d3d3d3 ${value}%, #d3d3d3 100%)`;
+        }
+
+        function setupInputs() {
+            const kernelSizeInput = document.getElementById('kernelSizeInput');
+            if (!kernelSizeInput) {
+                console.warn('Inputs not found in DOM yet');
+                return;
+            }
+            
+            console.log('Setting up inputs...');
+            
+            const kernelSizeValue = document.getElementById('kernelSizeValue');
+            const sigmaSlider = document.getElementById('sigmaSlider');
+            const sigmaValue = document.getElementById('sigmaValue');
+            const blockSizeSlider = document.getElementById('blockSizeSlider');
+            const blockSizeValue = document.getElementById('blockSizeValue');
+            const threshConstantSlider = document.getElementById('threshConstantSlider');
+            const threshConstantValue = document.getElementById('threshConstantValue');
+            const cannyThresh1Slider = document.getElementById('cannyThresh1Slider');
+            const cannyThresh1Value = document.getElementById('cannyThresh1Value');
+            const cannyThresh2Slider = document.getElementById('cannyThresh2Slider');
+            const cannyThresh2Value = document.getElementById('cannyThresh2Value');
+            
+            const kernelSizes = [3, 5, 7, 9, 11, 13, 15];
+            const blockSizes = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21];
+            
+            kernelSizeSlider.addEventListener('input', function(e) {
+                console.log('kernelSizeSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const idx = parseInt(e.target.value);
+                kernelSizeValue.textContent = kernelSizes[idx];
+                updateSliderFill(kernelSizeSlider);
+                if (currentImage) {
+                    console.log('Running detection with kernel idx:', idx);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+            
+            sigmaSlider.addEventListener('input', function(e) {
+                console.log('sigmaSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseFloat(e.target.value);
+                sigmaValue.textContent = val.toFixed(1);
+                updateSliderFill(sigmaSlider);
+                if (currentImage) {
+                    console.log('Running detection with sigma:', val);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            blockSizeSlider.addEventListener('input', function(e) {
+                console.log('blockSizeSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const idx = parseInt(e.target.value);
+                blockSizeValue.textContent = blockSizes[idx];
+                updateSliderFill(blockSizeSlider);
+                if (currentImage) {
+                    console.log('Running detection with block idx:', idx);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            threshConstantSlider.addEventListener('input', function(e) {
+                console.log('threshConstantSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseInt(e.target.value);
+                threshConstantValue.textContent = val;
+                updateSliderFill(threshConstantSlider);
+                if (currentImage) {
+                    console.log('Running detection with threshConstant:', val);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            cannyThresh1Slider.addEventListener('input', function(e) {
+                console.log('cannyThresh1Slider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseInt(e.target.value);
+                cannyThresh1Value.textContent = val;
+                updateSliderFill(cannyThresh1Slider);
+                if (currentImage) {
+                    console.log('Running detection with cannyThresh1:', val);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            cannyThresh2Slider.addEventListener('input', function(e) {
+                console.log('cannyThresh2Slider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseInt(e.target.value);
+                cannyThresh2Value.textContent = val;
+                updateSliderFill(cannyThresh2Slider);
+                if (currentImage) {
+                    console.log('Running detection with cannyThresh2:', val);
+                    runDetection(currentImage);
+                }
+            }, false);
+            
+            // Initialize slider fills
+            updateSliderFill(kernelSizeSlider);
+            updateSliderFill(sigmaSlider);
+            updateSliderFill(blockSizeSlider);
+            updateSliderFill(threshConstantSlider);
+            updateSliderFill(cannyThresh1Slider);
+            updateSliderFill(cannyThresh2Slider);
+            
+            // Sync display values to current slider positions
+            const kernelSizeIdx = parseInt(kernelSizeSlider.value);
+            kernelSizeValue.textContent = kernelSizes[kernelSizeIdx];
+            
+            const sigmaVal = parseFloat(sigmaSlider.value);
+            sigmaValue.textContent = sigmaVal.toFixed(1);
+            
+            const blockSizeIdx = parseInt(blockSizeSlider.value);
+            blockSizeValue.textContent = blockSizes[blockSizeIdx];
+            
+            const threshConstantVal = parseInt(threshConstantSlider.value);
+            threshConstantValue.textContent = threshConstantVal;
+            
+            const cannyThresh1Val = parseInt(cannyThresh1Slider.value);
+            cannyThresh1Value.textContent = cannyThresh1Val;
+            
+            const cannyThresh2Val = parseInt(cannyThresh2Slider.value);
+            cannyThresh2Value.textContent = cannyThresh2Val;
+            
+            console.log('Sliders setup complete');
+        }
+
+        // Wait for OpenCV to load
+        window.addEventListener('load', () => {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                updateStatus('✅ OpenCV.js loaded. Ready to test!');
+            } else {
+                updateStatus('⏳ Waiting for OpenCV.js to load...');
+                const checkInterval = setInterval(() => {
+                    if (typeof cv !== 'undefined' && cv.Mat) {
+                        updateStatus('✅ OpenCV.js loaded. Ready to test!');
+                        clearInterval(checkInterval);
+                    }
+                }, 100);
+            }
+        });
+    </script>
+</body>
+</html>
