@@ -23,7 +23,6 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 30000): 
     const isReady = () => !!(window as any).cv?.Mat;
 
     if (isReady()) {
-      log('OpenCV.js already loaded and ready.');
       finish(resolve);
       return;
     }

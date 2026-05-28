@@ -21,7 +21,6 @@ async function appendToLogFile(app: App, message: string) {
 		const file = app.vault.getAbstractFileByPath(logFilePath);
 		if (file && file instanceof TFile) {
 			await app.vault.modify(file, logContent);
-			new Notice('Log: Updated CameraPluginLog.md');
 		} else {
 			await app.vault.create(logFilePath, logContent);
 			new Notice('Log: Created CameraPluginLog.md');
@@ -132,8 +131,7 @@ class CameraModal extends Modal {
 			const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 				const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
 					let logMsg = `[PLUGIN v18] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
-				new Notice("Loading OpenCV.js...");
-				logMsg += 'Loading OpenCV.js...\n';
+
 				try {
 					// Pass app and logger to loadOpenCV to capture all loader events
 					await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
@@ -162,12 +160,7 @@ class CameraModal extends Modal {
 							logMsg += `[${scanId}-DEBUG] src=${d.srcCols}×${d.srcRows} type=${d.srcType} pixel0=[${d.srcSamplePixel}]\n`;
 							logMsg += `[${scanId}-DEBUG] dst=${d.dstCols}×${d.dstRows} midPixel=[${d.dstSamplePixel}] warpScale=${d.warpScaleUsed.toFixed(3)}\n`;
 							}
-							logMsg += `Document detected!\nCorners (tl → tr → br → bl):\n`;
-							const labels = ["top-left", "top-right", "bottom-right", "bottom-left"];
-							result.corners.forEach((pt, i) => {
-								logMsg += `  ${labels[i].padEnd(12)} x=${pt.x}, y=${pt.y}\n`;
-							});
-							logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
+							logMsg += `Document detected!\n`;
 
 							// Convert cropped image to blob and save
 							result.warped.toBlob(async (croppedBlob) => {
@@ -189,7 +182,7 @@ class CameraModal extends Modal {
 								try {
 									const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
 									if (oldCropped) await this.app.vault.delete(oldCropped);
-									logMsg += `[${scanId}] Deleted old cropped file\n`;
+
 								} catch (e) {
 									logMsg += `[${scanId}] Could not delete old cropped: ${e}\n`;
 								}
@@ -227,7 +220,7 @@ class CameraModal extends Modal {
 											new Notice(`Adding images to vault...`);
 											// Insert both images into the note
 											if (view) {
-												await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
+
 												const cursor = view.editor.getCursor();
 												view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
 											} else {
@@ -244,7 +237,7 @@ class CameraModal extends Modal {
 											resultDiv.appendChild(result.warped);
 											contentEl.appendChild(resultDiv);
 
-											new Notice("Document detected and saved!");
+
 											await appendToLogFile(this.app, logMsg);
 											scanProcessing = false;
 											this.close();
@@ -254,7 +247,6 @@ class CameraModal extends Modal {
 									// Setting is OFF - only save cropped, skip overlay
 									new Notice(`Adding image to vault...`);
 									if (view) {
-										await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
 										const cursor = view.editor.getCursor();
 										view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
 									} else {
@@ -271,7 +263,7 @@ class CameraModal extends Modal {
 									resultDiv.appendChild(result.warped);
 									contentEl.appendChild(resultDiv);
 
-									new Notice("Document detected and saved!");
+
 									await appendToLogFile(this.app, logMsg);
 									scanProcessing = false;
 									this.close();
@@ -476,8 +468,6 @@ class CameraModal extends Modal {
 		const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
 		let logMsg = `[PLUGIN v18] Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 
-		new Notice("Loading OpenCV.js...");
-		logMsg += 'Loading OpenCV.js...\n';
 		try {
 			await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
 			new Notice("OpenCV.js loaded. Reading image...");
@@ -503,12 +493,7 @@ class CameraModal extends Modal {
 						const d = result.debug;
 					logMsg += `[DEBUG] ${d.srcCols}×${d.srcRows} → ${d.dstCols}×${d.dstRows} (warpScale=${d.warpScaleUsed.toFixed(3)})\n`;
 					}
-					logMsg += `Document detected!\nCorners (tl → tr → br → bl):\n`;
-					const labels = ["top-left", "top-right", "bottom-right", "bottom-left"];
-					result.corners.forEach((pt, i) => {
-						logMsg += `  ${labels[i].padEnd(12)} x=${pt.x}, y=${pt.y}\n`;
-					});
-					logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
+					logMsg += `Document detected!\n`;
 
 					// Convert cropped image to blob and save
 					result.warped.toBlob(async (croppedBlob) => {
@@ -530,7 +515,7 @@ class CameraModal extends Modal {
 						try {
 							const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
 							if (oldCropped) await this.app.vault.delete(oldCropped);
-							logMsg += `Deleted old cropped file\n`;
+
 						} catch (e) {
 							logMsg += `Could not delete old cropped: ${e}\n`;
 						}
@@ -568,14 +553,12 @@ class CameraModal extends Modal {
 									new Notice(`Adding images to vault...`);
 									const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 									if (view) {
-										await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
 										const cursor = view.editor.getCursor();
 										view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
 									} else {
 										new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
 									}
 
-									new Notice("Document detected and saved!");
 									await appendToLogFile(this.app, logMsg);
 								}
 							}, 'image/png');
@@ -584,14 +567,13 @@ class CameraModal extends Modal {
 							new Notice(`Adding image to vault...`);
 							const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 							if (view) {
-								await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
 								const cursor = view.editor.getCursor();
 								view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
 							} else {
 								new Notice(`Saved to ${croppedPath}`);
 							}
 
-							new Notice("Document detected and saved!");
+
 							await appendToLogFile(this.app, logMsg);
 						}
 					}, 'image/png');
@@ -658,8 +640,6 @@ class CameraModal extends Modal {
 		const uploadTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
 		let logMsg = `[PLUGIN v18] Upload started: ${uploadTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 
-		new Notice("Loading OpenCV.js...");
-		logMsg += 'Loading OpenCV.js...\n';
 		try {
 			await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
 			new Notice("OpenCV.js loaded. Reading image...");
@@ -685,12 +665,7 @@ class CameraModal extends Modal {
 						const d = result.debug;
 					logMsg += `[DEBUG] ${d.srcCols}×${d.srcRows} → ${d.dstCols}×${d.dstRows} (warpScale=${d.warpScaleUsed.toFixed(3)})\n`;
 					}
-					logMsg += `Document detected!\nCorners (tl → tr → br → bl):\n`;
-					const labels = ["top-left", "top-right", "bottom-right", "bottom-left"];
-					result.corners.forEach((pt, i) => {
-						logMsg += `  ${labels[i].padEnd(12)} x=${pt.x}, y=${pt.y}\n`;
-					});
-					logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
+					logMsg += `Document detected!\n`;
 
 					result.warped.toBlob(async (croppedBlob) => {
 						if (!croppedBlob) {
@@ -711,7 +686,6 @@ class CameraModal extends Modal {
 						try {
 							const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
 							if (oldCropped) await this.app.vault.delete(oldCropped);
-							logMsg += `Deleted old cropped file\n`;
 						} catch (e) {
 							logMsg += `Could not delete old cropped: ${e}\n`;
 						}
@@ -748,14 +722,14 @@ class CameraModal extends Modal {
 									new Notice(`Adding images to vault...`);
 									const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 									if (view) {
-										await appendToLogFile(this.app, `[upload] inserting note content at cursor`);
+
 										const cursor = view.editor.getCursor();
 										view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
 									} else {
 										new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
 									}
 
-									new Notice("Document detected and saved!");
+
 									await appendToLogFile(this.app, logMsg);
 								}
 							}, 'image/png');
@@ -764,14 +738,13 @@ class CameraModal extends Modal {
 							new Notice(`Adding image to vault...`);
 							const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 							if (view) {
-								await appendToLogFile(this.app, `[upload] inserting note content at cursor`);
 								const cursor = view.editor.getCursor();
 								view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
 							} else {
 								new Notice(`Saved to ${croppedPath}`);
 							}
 
-							new Notice("Document detected and saved!");
+
 							await appendToLogFile(this.app, logMsg);
 						}
 					}, 'image/png');
