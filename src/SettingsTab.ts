@@ -3,10 +3,12 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 
 export interface CameraPluginSettings {
 	chosenFolderPath: string;
+	showBoundingBox: boolean;
 }
 
 export const DEFAULT_SETTINGS: CameraPluginSettings = {
 	chosenFolderPath: "attachments/snaps",
+	showBoundingBox: false,
 };
 
 export default class CameraSettingsTab extends PluginSettingTab {
@@ -31,6 +33,18 @@ export default class CameraSettingsTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.chosenFolderPath)
 					.onChange(async (value) => {
 						this.plugin.settings.chosenFolderPath = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Save edge detection overlay")
+			.setDesc("Save an additional image showing detected document edges")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showBoundingBox)
+					.onChange(async (value) => {
+						this.plugin.settings.showBoundingBox = value;
 						await this.plugin.saveSettings();
 					})
 			);

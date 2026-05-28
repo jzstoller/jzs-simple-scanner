@@ -34,11 +34,13 @@ async function appendToLogFile(app: App, message: string) {
 
 class CameraModal extends Modal {
 	chosenFolderPath: string;
+	cameraSettings: CameraPluginSettings;
 	videoStream: MediaStream = null;
 	shouldOpenFilePicker: boolean = false;
 	constructor(app: App, cameraSettings: CameraPluginSettings, shouldOpenFilePicker: boolean = false) {
 		super(app);
 		this.chosenFolderPath = cameraSettings.chosenFolderPath;
+		this.cameraSettings = cameraSettings;
 		this.shouldOpenFilePicker = shouldOpenFilePicker;
 	}
 
@@ -129,7 +131,7 @@ class CameraModal extends Modal {
 			const seconds = String(now.getSeconds()).padStart(2, '0');
 			const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 				const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-					let logMsg = `[PLUGIN v17] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
+					let logMsg = `[PLUGIN v18] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 				new Notice("Loading OpenCV.js...");
 				logMsg += 'Loading OpenCV.js...\n';
 				try {
@@ -167,10 +169,7 @@ class CameraModal extends Modal {
 							});
 							logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
 
-							// Create debug overlay with crop box
-							const overlayCanvas = createDebugOverlay(img, result.corners);
-
-							// Convert both images to blobs and save
+							// Convert cropped image to blob and save
 							result.warped.toBlob(async (croppedBlob) => {
 								if (!croppedBlob) {
 									const msg = "Failed to convert warped image to blob";
@@ -180,26 +179,13 @@ class CameraModal extends Modal {
 									return;
 								}
 
-								overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
-									if (!overlayBlob) {
-										const msg = "Failed to convert overlay image to blob";
-										new Notice(msg);
-										logMsg += msg + '\n';
-										await appendToLogFile(this.app, logMsg);
-										return;
-									}
+								const croppedName = `cropped-${timestampFilename}.png`;
+								const croppedPath = this.chosenFolderPath + "/" + croppedName;
 
-									const croppedName = `cropped-${timestampFilename}.png`;
-									const overlayName = `overlay-${timestampFilename}.png`;
+								const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
+								if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
 
-									// Save files to vault
-									const croppedPath = this.chosenFolderPath + "/" + croppedName;
-									const overlayPath = this.chosenFolderPath + "/" + overlayName;
-
-									const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
-									if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
-
-								// Force delete old files to prevent caching
+								// Force delete old cropped file
 								try {
 									const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
 									if (oldCropped) await this.app.vault.delete(oldCropped);
@@ -207,46 +193,89 @@ class CameraModal extends Modal {
 								} catch (e) {
 									logMsg += `[${scanId}] Could not delete old cropped: ${e}\n`;
 								}
-								try {
-									const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
-									if (oldOverlay) await this.app.vault.delete(oldOverlay);
-									logMsg += `[${scanId}] Deleted old overlay file\n`;
-								} catch (e) {
-									logMsg += `[${scanId}] Could not delete old overlay: ${e}\n`;
-								}
 
-								// Now create new files
+								// Always save cropped image
 								await this.app.vault.createBinary(croppedPath, await croppedBlob.arrayBuffer());
-								await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
-
-								new Notice(`Adding new Images to vault...`);
 								logMsg += `[${scanId}] Saved cropped image as ${croppedName} (${croppedBlob.size} bytes)\n`;
-								logMsg += `[${scanId}] Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
 
-								// Insert both images into the note
-								if (view) {
-									await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
-									const cursor = view.editor.getCursor();
-									view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
+
+								// Optionally save overlay if setting is enabled
+								if (this.cameraSettings.showBoundingBox) {
+									const overlayCanvas = createDebugOverlay(img, result.corners);
+
+									overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
+										if (!overlayBlob) {
+											const msg = "Failed to convert overlay image to blob";
+											logMsg += msg + '\n';
+										} else {
+											const overlayName = `overlay-${timestampFilename}.png`;
+											const overlayPath = this.chosenFolderPath + "/" + overlayName;
+
+											// Delete old overlay if exists
+											try {
+												const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
+												if (oldOverlay) await this.app.vault.delete(oldOverlay);
+												logMsg += `[${scanId}] Deleted old overlay file\n`;
+											} catch (e) {
+												logMsg += `[${scanId}] Could not delete old overlay: ${e}\n`;
+											}
+
+											// Save new overlay
+											await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
+											logMsg += `[${scanId}] Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
+
+											new Notice(`Adding images to vault...`);
+											// Insert both images into the note
+											if (view) {
+												await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
+												const cursor = view.editor.getCursor();
+												view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
+											} else {
+												new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
+											}
+
+											// Show in UI
+											const resultDiv = document.createElement('div');
+											resultDiv.style.marginTop = '16px';
+											const label = document.createElement('div');
+											label.textContent = 'Detected Document:';
+											label.style.fontWeight = 'bold';
+											resultDiv.appendChild(label);
+											resultDiv.appendChild(result.warped);
+											contentEl.appendChild(resultDiv);
+
+											new Notice("Document detected and saved!");
+											await appendToLogFile(this.app, logMsg);
+											scanProcessing = false;
+											this.close();
+										}
+									}, 'image/png');
 								} else {
-									new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
+									// Setting is OFF - only save cropped, skip overlay
+									new Notice(`Adding image to vault...`);
+									if (view) {
+										await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
+										const cursor = view.editor.getCursor();
+										view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
+									} else {
+										new Notice(`Saved to ${croppedPath}`);
+									}
+
+									// Show in UI
+									const resultDiv = document.createElement('div');
+									resultDiv.style.marginTop = '16px';
+									const label = document.createElement('div');
+									label.textContent = 'Detected Document:';
+									label.style.fontWeight = 'bold';
+									resultDiv.appendChild(label);
+									resultDiv.appendChild(result.warped);
+									contentEl.appendChild(resultDiv);
+
+									new Notice("Document detected and saved!");
+									await appendToLogFile(this.app, logMsg);
+									scanProcessing = false;
+									this.close();
 								}
-
-								// Show in UI
-								const resultDiv = document.createElement('div');
-								resultDiv.style.marginTop = '16px';
-								const label = document.createElement('div');
-								label.textContent = 'Detected Document:';
-								label.style.fontWeight = 'bold';
-								resultDiv.appendChild(label);
-								resultDiv.appendChild(result.warped);
-								contentEl.appendChild(resultDiv);
-
-								new Notice("Document detected and saved!");
-								await appendToLogFile(this.app, logMsg);
-								scanProcessing = false;
-								this.close();
-								}, 'image/png');
 							}, 'image/png');
 						} catch (err) {
 							logMsg += `Document detection failed: ${err.message}\n`;
@@ -445,7 +474,7 @@ class CameraModal extends Modal {
 		const seconds = String(new Date().getSeconds()).padStart(2, '0');
 		const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 		const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-		let logMsg = `[PLUGIN v17] Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
+		let logMsg = `[PLUGIN v18] Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 
 		new Notice("Loading OpenCV.js...");
 		logMsg += 'Loading OpenCV.js...\n';
@@ -472,8 +501,7 @@ class CameraModal extends Modal {
 					const result = detectDocument(img);
 					if (result.debug) {
 						const d = result.debug;
-						logMsg += `[DEBUG] src=${d.srcCols}×${d.srcRows} type=${d.srcType} pixel0=[${d.srcSamplePixel}]\n`;
-						logMsg += `[DEBUG] dst=${d.dstCols}×${d.dstRows} midPixel=[${d.dstSamplePixel}] warpScale=${d.warpScaleUsed.toFixed(3)}\n`;
+					logMsg += `[DEBUG] ${d.srcCols}×${d.srcRows} → ${d.dstCols}×${d.dstRows} (warpScale=${d.warpScaleUsed.toFixed(3)})\n`;
 					}
 					logMsg += `Document detected!\nCorners (tl → tr → br → bl):\n`;
 					const labels = ["top-left", "top-right", "bottom-right", "bottom-left"];
@@ -482,8 +510,7 @@ class CameraModal extends Modal {
 					});
 					logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
 
-					const overlayCanvas = createDebugOverlay(img, result.corners);
-
+					// Convert cropped image to blob and save
 					result.warped.toBlob(async (croppedBlob) => {
 						if (!croppedBlob) {
 							const msg = "Failed to convert warped image to blob";
@@ -493,57 +520,80 @@ class CameraModal extends Modal {
 							return;
 						}
 
-						overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
-							if (!overlayBlob) {
-								const msg = "Failed to convert overlay image to blob";
-								new Notice(msg);
-								logMsg += msg + '\n';
-								await appendToLogFile(this.app, logMsg);
-								return;
-							}
+						const croppedName = `cropped-${timestampFilename}.png`;
+						const croppedPath = this.chosenFolderPath + "/" + croppedName;
 
-							const croppedName = `cropped-${timestampFilename}.png`;
-							const overlayName = `overlay-${timestampFilename}.png`;
-							const croppedPath = this.chosenFolderPath + "/" + croppedName;
-							const overlayPath = this.chosenFolderPath + "/" + overlayName;
+						const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
+						if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
 
-							const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
-							if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
+						// Delete old cropped file
+						try {
+							const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
+							if (oldCropped) await this.app.vault.delete(oldCropped);
+							logMsg += `Deleted old cropped file\n`;
+						} catch (e) {
+							logMsg += `Could not delete old cropped: ${e}\n`;
+						}
 
-							try {
-								const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
-								if (oldCropped) await this.app.vault.delete(oldCropped);
-								logMsg += `Deleted old cropped file\n`;
-							} catch (e) {
-								logMsg += `Could not delete old cropped: ${e}\n`;
-							}
-							try {
-								const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
-								if (oldOverlay) await this.app.vault.delete(oldOverlay);
-								logMsg += `Deleted old overlay file\n`;
-							} catch (e) {
-								logMsg += `Could not delete old overlay: ${e}\n`;
-							}
+						// Always save cropped image
+						await this.app.vault.createBinary(croppedPath, await croppedBlob.arrayBuffer());
+						logMsg += `Saved cropped image as ${croppedName} (${croppedBlob.size} bytes)\n`;
 
-							await this.app.vault.createBinary(croppedPath, await croppedBlob.arrayBuffer());
-							await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
 
-							new Notice(`Adding new Images to vault...`);
-							logMsg += `Saved cropped image as ${croppedName} (${croppedBlob.size} bytes)\n`;
-							logMsg += `Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
+						// Optionally save overlay if setting is enabled
+						if (this.cameraSettings.showBoundingBox) {
+							const overlayCanvas = createDebugOverlay(img, result.corners);
 
+							overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
+								if (!overlayBlob) {
+									const msg = "Failed to convert overlay image to blob";
+									logMsg += msg + '\n';
+								} else {
+									const overlayName = `overlay-${timestampFilename}.png`;
+									const overlayPath = this.chosenFolderPath + "/" + overlayName;
+
+									// Delete old overlay if exists
+									try {
+										const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
+										if (oldOverlay) await this.app.vault.delete(oldOverlay);
+										logMsg += `Deleted old overlay file\n`;
+									} catch (e) {
+										logMsg += `Could not delete old overlay: ${e}\n`;
+									}
+
+									// Save new overlay
+									await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
+									logMsg += `Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
+
+									new Notice(`Adding images to vault...`);
+									const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+									if (view) {
+										await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
+										const cursor = view.editor.getCursor();
+										view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
+									} else {
+										new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
+									}
+
+									new Notice("Document detected and saved!");
+									await appendToLogFile(this.app, logMsg);
+								}
+							}, 'image/png');
+						} else {
+							// Setting is OFF - only save cropped, skip overlay
+							new Notice(`Adding image to vault...`);
 							const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 							if (view) {
 								await appendToLogFile(this.app, `[scan] inserting note content at cursor`);
 								const cursor = view.editor.getCursor();
-								view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
+								view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
 							} else {
-								new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
+								new Notice(`Saved to ${croppedPath}`);
 							}
 
 							new Notice("Document detected and saved!");
 							await appendToLogFile(this.app, logMsg);
-						}, 'image/png');
+						}
 					}, 'image/png');
 				} catch (err) {
 					logMsg += `Document detection failed: ${err.message}\n`;
@@ -606,7 +656,7 @@ class CameraModal extends Modal {
 		const seconds = String(new Date().getSeconds()).padStart(2, '0');
 		const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 		const uploadTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-		let logMsg = `[PLUGIN v17] Upload started: ${uploadTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
+		let logMsg = `[PLUGIN v18] Upload started: ${uploadTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 
 		new Notice("Loading OpenCV.js...");
 		logMsg += 'Loading OpenCV.js...\n';
@@ -633,8 +683,7 @@ class CameraModal extends Modal {
 					const result = detectDocument(img);
 					if (result.debug) {
 						const d = result.debug;
-						logMsg += `[DEBUG] src=${d.srcCols}×${d.srcRows} type=${d.srcType} pixel0=[${d.srcSamplePixel}]\n`;
-						logMsg += `[DEBUG] dst=${d.dstCols}×${d.dstRows} midPixel=[${d.dstSamplePixel}] warpScale=${d.warpScaleUsed.toFixed(3)}\n`;
+					logMsg += `[DEBUG] ${d.srcCols}×${d.srcRows} → ${d.dstCols}×${d.dstRows} (warpScale=${d.warpScaleUsed.toFixed(3)})\n`;
 					}
 					logMsg += `Document detected!\nCorners (tl → tr → br → bl):\n`;
 					const labels = ["top-left", "top-right", "bottom-right", "bottom-left"];
@@ -642,8 +691,6 @@ class CameraModal extends Modal {
 						logMsg += `  ${labels[i].padEnd(12)} x=${pt.x}, y=${pt.y}\n`;
 					});
 					logMsg += `Warped size: ${result.width} × ${result.height}px\n`;
-
-					const overlayCanvas = createDebugOverlay(img, result.corners);
 
 					result.warped.toBlob(async (croppedBlob) => {
 						if (!croppedBlob) {
@@ -654,57 +701,79 @@ class CameraModal extends Modal {
 							return;
 						}
 
-						overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
-							if (!overlayBlob) {
-								const msg = "Failed to convert overlay image to blob";
-								new Notice(msg);
-								logMsg += msg + '\n';
-								await appendToLogFile(this.app, logMsg);
-								return;
-							}
+						const croppedName = `cropped-${timestampFilename}.png`;
+						const croppedPath = this.chosenFolderPath + "/" + croppedName;
 
-							const croppedName = `cropped-${timestampFilename}.png`;
-							const overlayName = `overlay-${timestampFilename}.png`;
-							const croppedPath = this.chosenFolderPath + "/" + croppedName;
-							const overlayPath = this.chosenFolderPath + "/" + overlayName;
+						const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
+						if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
 
-							const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
-							if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
+						// Delete old cropped file
+						try {
+							const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
+							if (oldCropped) await this.app.vault.delete(oldCropped);
+							logMsg += `Deleted old cropped file\n`;
+						} catch (e) {
+							logMsg += `Could not delete old cropped: ${e}\n`;
+						}
 
-							try {
-								const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
-								if (oldCropped) await this.app.vault.delete(oldCropped);
-								logMsg += `Deleted old cropped file\n`;
-							} catch (e) {
-								logMsg += `Could not delete old cropped: ${e}\n`;
-							}
-							try {
-								const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
-								if (oldOverlay) await this.app.vault.delete(oldOverlay);
-								logMsg += `Deleted old overlay file\n`;
-							} catch (e) {
-								logMsg += `Could not delete old overlay: ${e}\n`;
-							}
+						// Always save cropped image
+						await this.app.vault.createBinary(croppedPath, await croppedBlob.arrayBuffer());
+						logMsg += `Saved cropped image as ${croppedName} (${croppedBlob.size} bytes)\n`;
 
-							await this.app.vault.createBinary(croppedPath, await croppedBlob.arrayBuffer());
-							await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
+						// Optionally save overlay if setting is enabled
+						if (this.cameraSettings.showBoundingBox) {
+							const overlayCanvas = createDebugOverlay(img, result.corners);
 
-							new Notice(`Adding new Images to vault...`);
-							logMsg += `Saved cropped image as ${croppedName} (${croppedBlob.size} bytes)\n`;
-							logMsg += `Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
+							overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
+								if (!overlayBlob) {
+									const msg = "Failed to convert overlay image to blob";
+									logMsg += msg + '\n';
+								} else {
+									const overlayName = `overlay-${timestampFilename}.png`;
+									const overlayPath = this.chosenFolderPath + "/" + overlayName;
 
+									// Delete old overlay if exists
+									try {
+										const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
+										if (oldOverlay) await this.app.vault.delete(oldOverlay);
+										logMsg += `Deleted old overlay file\n`;
+									} catch (e) {
+										logMsg += `Could not delete old overlay: ${e}\n`;
+									}
+
+									// Save new overlay
+									await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
+									logMsg += `Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
+
+									new Notice(`Adding images to vault...`);
+									const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+									if (view) {
+										await appendToLogFile(this.app, `[upload] inserting note content at cursor`);
+										const cursor = view.editor.getCursor();
+										view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
+									} else {
+										new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
+									}
+
+									new Notice("Document detected and saved!");
+									await appendToLogFile(this.app, logMsg);
+								}
+							}, 'image/png');
+						} else {
+							// Setting is OFF - only save cropped, skip overlay
+							new Notice(`Adding image to vault...`);
 							const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 							if (view) {
 								await appendToLogFile(this.app, `[upload] inserting note content at cursor`);
 								const cursor = view.editor.getCursor();
-								view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
+								view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
 							} else {
-								new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
+								new Notice(`Saved to ${croppedPath}`);
 							}
 
 							new Notice("Document detected and saved!");
 							await appendToLogFile(this.app, logMsg);
-						}, 'image/png');
+						}
 					}, 'image/png');
 				} catch (err) {
 					logMsg += `Document detection failed: ${err.message}\n`;
