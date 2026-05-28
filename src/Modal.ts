@@ -51,14 +51,8 @@ class CameraModal extends Modal {
 		const buttonsDiv = webCamContainer.createDiv();
 		const firstRow = buttonsDiv.createDiv();
 		const secondRow = buttonsDiv.createDiv();
-		const recordVideoButton = firstRow.createEl("button", {
-			text: "Start recording",
-		});
 		const switchCameraButton = firstRow.createEl("button", {
 			text: "Switch Camera",
-		});
-		const snapPhotoButton = firstRow.createEl("button", {
-			text: "Take a snap",
 		});
 		const scanButton = firstRow.createEl("button", {
 			text: "Scan",
@@ -72,7 +66,7 @@ class CameraModal extends Modal {
 			type: "file",
 		});
 		filePicker.id = "filepicker";
-		filePicker.accept = "image/*,video/*";
+		filePicker.accept = "image/*";
 		filePicker.capture = "camera"; // back camera by default for mobile screens
 
 		filePicker.style.display = "none";
@@ -127,7 +121,7 @@ class CameraModal extends Modal {
 			const hours = String(now.getHours()).padStart(2, '0');
 			const minutes = String(now.getMinutes()).padStart(2, '0');
 			const seconds = String(now.getSeconds()).padStart(2, '0');
-			const timestampFilename = `image_${month}${day}${year}${hours}${minutes}${seconds}`;
+			const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 				const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
 					let logMsg = `[PLUGIN v10] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 				new Notice("Loading OpenCV.js...");
@@ -286,8 +280,6 @@ class CameraModal extends Modal {
 
 		videoEl.autoplay = true;
 		videoEl.muted = true;
-		const chunks: BlobPart[] = [];
-		let recorder: MediaRecorder = null;
 		this.videoStream = null;
 
 		// getUserMedia must precede enumerateDevices so macOS grants permission
@@ -344,7 +336,7 @@ class CameraModal extends Modal {
 
 		const saveFile = async (
 			file: ArrayBuffer,
-			isImage = false,
+			isImage = true,
 			fileName = "",
 		) => {
 			if (!fileName) {
@@ -354,11 +346,9 @@ class CameraModal extends Modal {
 					.join("_")
 					.split(":")
 					.join("-");
-				fileName = isImage
-					? `image_${dateString}.png`
-					: `video_${dateString}.webm`;
+				fileName = `image_${dateString}.png`;
 			}
-			new Notice(`Adding new ${isImage ? "Image" : "Video"} to vault...`);
+			new Notice(`Adding new Image to vault...`);
 
 			const filePath = this.chosenFolderPath + "/" + fileName;
 			const folderExists = this.app.vault.getAbstractFileByPath(
@@ -374,9 +364,7 @@ class CameraModal extends Modal {
 			await appendToLogFile(this.app, `[saveFile] inserting note content for ${fileName}`);
 			const cursor = view.editor.getCursor();
 			view.editor.replaceRange(
-				isImage
-					? `![${fileName}](${filePath})\n`
-					: `\n![[${filePath}]]\n`,
+				`![${fileName}](${filePath})\n`,
 				cursor,
 			);
 			this.close();
@@ -392,53 +380,7 @@ class CameraModal extends Modal {
 			videoEl.play();
 		};
 
-		snapPhotoButton.onclick = () => {
-			const canvas = webCamContainer.createEl("canvas");
-			canvas.style.display = "none";
-			const { videoHeight, videoWidth } = videoEl;
-			canvas.height = videoHeight;
-			canvas.width = videoWidth;
-
-			canvas
-				.getContext("2d")
-				.drawImage(videoEl, 0, 0, videoWidth, videoHeight);
-			canvas.toBlob(async (blob) => {
-				const bufferFile = await blob.arrayBuffer();
-				saveFile(bufferFile, true);
-			}, "image/png");
-		};
-
 		videoEl.srcObject = this.videoStream;
-
-		recordVideoButton.onclick = async () => {
-			switchCameraButton.disabled = true;
-			if (!recorder) {
-				recorder = new MediaRecorder(this.videoStream, {
-					mimeType: "video/webm",
-				});
-			}
-
-			let isRecording: boolean =
-				recorder && recorder.state === "recording";
-			if (isRecording) {
-				recorder.stop();
-			} else {
-				recorder.start();
-			}
-			isRecording = !isRecording;
-			recordVideoButton.innerText = isRecording
-				? "Stop Recording"
-				: "Start Recording";
-
-			recorder.ondataavailable = (e) => chunks.push(e.data);
-			recorder.onstop = async (_) => {
-				const blob = new Blob(chunks, {
-					type: "audio/ogg; codecs=opus",
-				});
-				const bufferFile = await blob.arrayBuffer();
-				saveFile(bufferFile, false);
-			};
-		};
 	}
 
 	onClose() {

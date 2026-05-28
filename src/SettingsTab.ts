@@ -24,7 +24,7 @@ export default class CameraSettingsTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Folder Path")
-			.setDesc("Folder where the videos and snaps should be saved")
+			.setDesc("Folder where the scanned images should be saved")
 			.addText((text) =>
 				text
 					.setPlaceholder("Enter your secret")
