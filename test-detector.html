@@ -147,16 +147,16 @@
 <body>
     <div class="container">
         <h1>📸 Document Detection Test</h1>
-        
+
         <div class="controls">
             <button onclick="document.getElementById('fileInput').click()">📁 Choose Image</button>
             <button onclick="testWithURL()">🔗 Load from URL</button>
         </div>
-        
+
         <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
-        
+
         <div class="status" id="status">Ready to load an image...</div>
-        
+
         <div class="results" id="results"></div>
     </div>
 
@@ -190,37 +190,37 @@
                     if (dist(pts[i], pts[j]) < 10) return false;
                 }
             }
-            
+
             const ordered = orderPoints(pts);
             const [tl, tr, br, bl] = ordered;
-            
+
             // Get all 4 side lengths
             const topDist = dist(tl, tr);
             const bottomDist = dist(bl, br);
             const leftDist = dist(tl, bl);
             const rightDist = dist(tr, br);
-            
+
             // Check aspect ratio - documents are typically 0.5 to 2.5 (portrait to landscape)
             // Check aspect ratio - documents are typically 0.3 to 3.0 (portrait to landscape)
             const widthAvg = (topDist + bottomDist) / 2;
             const heightAvg = (leftDist + rightDist) / 2;
             const aspectRatio = widthAvg / heightAvg;
-            
+
             if (aspectRatio < 0.3 || aspectRatio > 3.0) return false;
-            
+
             // Check that opposite sides are similar (reject trapezoids)
             // Top and bottom should be similar length
             const topBottomRatio = Math.max(topDist, bottomDist) / Math.min(topDist, bottomDist);
             if (topBottomRatio > 1.5) return false;  // more strict than before
-            
+
             // Left and right should be similar length
             const leftRightRatio = Math.max(leftDist, rightDist) / Math.min(leftDist, rightDist);
             if (leftRightRatio > 1.5) return false;
-            
+
             // Check that all sides have reasonable length (not tiny)
             const minSideLength = Math.min(topDist, bottomDist, leftDist, rightDist);
             if (minSideLength < 20) return false;
-            
+
             return true;
         }
 
@@ -254,7 +254,7 @@
             return { M, w, h };
         }
 
-        function detectDocument(imageSource, kernelSizeIdx = 2, sigma = 0, blockSizeIdx = 5, threshConstant = 2, cannyThresh1 = 75, cannyThresh2 = 200) {
+function detectDocument(imageSource) {
             // Pre-draw to an explicit canvas
             const naturalW = imageSource.naturalWidth || imageSource.width;
             const naturalH = imageSource.naturalHeight || imageSource.height;
@@ -266,229 +266,212 @@
 
             const src = cv.imread(srcCanvas);
 
-            // Scale down to max 1500px
-            const MAX_DIM = 1500;
-            const scaleFactor = Math.min(MAX_DIM / src.cols, MAX_DIM / src.rows, 1.0);
-            let small = new cv.Mat();
-            if (scaleFactor < 1.0) {
-                cv.resize(src, small, new cv.Size(Math.round(src.cols * scaleFactor), Math.round(src.rows * scaleFactor)));
-            } else {
-                src.copyTo(small);
-            }
+            // Stage 1: Preprocessing
+            // Resize to ~1200px width for speed
+            let resized = new cv.Mat();
+            const scale = Math.min(1.0, 1200 / src.cols);
+            cv.resize(src, resized, new cv.Size(0, 0), scale, scale);
 
-            // Step 1: Grayscale
+            // Convert to grayscale
             let gray = new cv.Mat();
-            cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY, 0);
-            const grayCanvas = document.createElement('canvas');
-            grayCanvas.width = gray.cols;
-            grayCanvas.height = gray.rows;
-            cv.imshow(grayCanvas, gray);
+            cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
 
-            // Step 2: Blur
-            let blurred = new cv.Mat();
-            // Convert kernelSizeIdx to actual kernel size: 1->3, 2->5, 3->7, etc.
-            const kernelSizes = [3, 5, 7, 9, 11, 13, 15];
-            const ksize = kernelSizes[kernelSizeIdx] || 5;
-            cv.GaussianBlur(gray, blurred, new cv.Size(ksize, ksize), sigma);
-            const blurredCanvas = document.createElement('canvas');
-            blurredCanvas.width = blurred.cols;
-            blurredCanvas.height = blurred.rows;
-            cv.imshow(blurredCanvas, blurred);
+            // Bilateral filter (suppress texture, preserve edges)
+            let smooth = new cv.Mat();
+            cv.bilateralFilter(gray, smooth, 9, 75, 75, cv.BORDER_DEFAULT);
 
-            // Step 3: Adaptive threshold
-            let binary = new cv.Mat();
-            // Convert blockSizeIdx to actual block size: 1->3, 2->5, 3->7, etc.
-            const blockSizes = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21];
-            const blockSize = blockSizes[blockSizeIdx] || 11;
-            cv.adaptiveThreshold(blurred, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, threshConstant);
-            const binaryCanvas = document.createElement('canvas');
-            binaryCanvas.width = binary.cols;
-            binaryCanvas.height = binary.rows;
-            cv.imshow(binaryCanvas, binary);
-
-            // Step 4: Canny edges on the threshold
+            // Stage 2: Create Multiple Detection Maps
+            // A. Edge Map
             let edges = new cv.Mat();
-            cv.Canny(binary, edges, cannyThresh1, cannyThresh2);
-            const edgesCanvas = document.createElement('canvas');
-            edgesCanvas.width = edges.cols;
-            edgesCanvas.height = edges.rows;
-            cv.imshow(edgesCanvas, edges);
+            cv.Canny(smooth, edges, 50, 150);
 
-            // Find contours on edges
+            // Dilate to thicken edges
+            const kernelRect = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+            cv.dilate(edges, edges, kernelRect);
+
+            // B. Adaptive Brightness Map
+            let thresh = new cv.Mat();
+            cv.adaptiveThreshold(smooth, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 15);
+
+            // C. Morphological Cleanup
+            cv.morphologyEx(thresh, thresh, cv.MORPH_OPEN, kernelRect);
+            cv.morphologyEx(thresh, thresh, cv.MORPH_CLOSE, kernelRect);
+
+            // Stage 3: Combine Signals (edge AND brightness)
+            let combined = new cv.Mat();
+            cv.bitwise_and(thresh, edges, combined);
+
+            // Stage 4: Find Contours
             let contours = new cv.MatVector();
             let hierarchy = new cv.Mat();
-            cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            // Change retrieval mode to RETR_LIST
+            cv.findContours(combined, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-            // Find the largest valid 4-point contour
-            const minArea = small.cols * small.rows * 0.03;
-            let maxArea = minArea;
-            let bestContour = null;
-            let selectedCorners = null;
-            const rejectionLog = [];
+            let bestCnt = null;
+            let maxArea = 0;
 
             for (let i = 0; i < contours.size(); i++) {
-                const cnt = contours.get(i);
-                const peri = cv.arcLength(cnt, true);
-                const approx = new cv.Mat();
-                // More aggressive epsilon to force simplification to 4 points
-                cv.approxPolyDP(cnt, approx, 0.05 * peri, true);
-                const area = cv.contourArea(approx);
-                
-                if (approx.rows === 4) {
-                    const pts = ptsFromMat(approx);
-                    const isValid = isValidQuad(pts);
-                    if (!isValid) {
-                        // Log why it was rejected
-                        const ordered = orderPoints(pts);
-                        const [tl, tr, br, bl] = ordered;
-                        const topDist = dist(tl, tr);
-                        const bottomDist = dist(bl, br);
-                        const leftDist = dist(tl, bl);
-                        const rightDist = dist(tr, br);
-                        const widthAvg = (topDist + bottomDist) / 2;
-                        const heightAvg = (leftDist + rightDist) / 2;
-                        const aspectRatio = widthAvg / heightAvg;
-                        rejectionLog.push(`Contour ${i}: area=${Math.round(area)}, aspect=${aspectRatio.toFixed(2)}, REJECTED`);
-                    }
-                    
-                    if (isValid && area > maxArea) {
-                        maxArea = area;
-                        if (bestContour) bestContour.delete();
-                        bestContour = approx.clone();
-                        selectedCorners = pts;
-                        rejectionLog.push(`Contour ${i}: area=${Math.round(area)}, SELECTED`);
-                    }
-                } else {
-                    rejectionLog.push(`Contour ${i}: ${approx.rows} points (not 4-point)`);
-                }
-                approx.delete();
-                cnt.delete();
-            }
-
-            // Store rejection log in result for display
-            const contourDebugLog = rejectionLog;
-
-            // Step 5: Draw all contours + highlight selected one
-            const contoursCanvas = document.createElement('canvas');
-            contoursCanvas.width = edges.cols;
-            contoursCanvas.height = edges.rows;
-            const contoursCtx = contoursCanvas.getContext('2d');
-            contoursCtx.fillStyle = '#000';
-            contoursCtx.fillRect(0, 0, contoursCanvas.width, contoursCanvas.height);
-
-            // Draw all contours in gray
-            contoursCtx.strokeStyle = '#666666';
-            contoursCtx.lineWidth = 1;
-            for (let i = 0; i < contours.size(); i++) {
-                const cnt = contours.get(i);
+                const cnt  = contours.get(i);
                 const area = cv.contourArea(cnt);
-                if (area > minArea) {
-                    contoursCtx.beginPath();
-                    for (let j = 0; j < cnt.rows; j++) {
-                        const x = cnt.intPtr(j, 0)[0];
-                        const y = cnt.intPtr(j, 0)[1];
-                        if (j === 0) contoursCtx.moveTo(x, y);
-                        else contoursCtx.lineTo(x, y);
-                    }
-                    contoursCtx.closePath();
-                    contoursCtx.stroke();
+                if (area > maxArea) {
+                    maxArea = area;
+                    if (bestCnt) bestCnt.delete();
+                    bestCnt = cnt;
+                } else {
+                    cnt.delete();
                 }
-                cnt.delete();
             }
 
-            // Highlight the selected contour in red/bright green
-            if (bestContour) {
-                contoursCtx.strokeStyle = '#00ff00';
-                contoursCtx.lineWidth = 3;
-                contoursCtx.beginPath();
-                for (let j = 0; j < bestContour.rows; j++) {
-                    const x = bestContour.intPtr(j, 0)[0];
-                    const y = bestContour.intPtr(j, 0)[1];
-                    if (j === 0) contoursCtx.moveTo(x, y);
-                    else contoursCtx.lineTo(x, y);
-                }
-                contoursCtx.closePath();
-                contoursCtx.stroke();
+            // Compute convex hull to smooth out squiggly edges
+            let approx = null;
+            let bestCandidate = null;
+            if (bestCnt) {
+                const hull    = new cv.Mat();
+                approx  = new cv.Mat();
+                cv.convexHull(bestCnt, hull);
+                const peri = cv.arcLength(hull, true);
+                cv.approxPolyDP(hull, approx, 0.04 * peri, true);
 
-                // Draw corner points of selected contour
-                if (selectedCorners) {
-                    const colors = ['#ff2a2a', '#2a7fff', '#2aff2a', '#ffea2a'];
-                    selectedCorners.forEach((pt, i) => {
-                        contoursCtx.fillStyle = colors[i];
-                        contoursCtx.beginPath();
-                        contoursCtx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
-                        contoursCtx.fill();
-                        contoursCtx.strokeStyle = '#fff';
-                        contoursCtx.lineWidth = 1;
-                        contoursCtx.stroke();
+                console.log("Points in approx:", approx.rows); // should be 4
+
+                // Extract corner points
+                const pts = [];
+                for (let j = 0; j < approx.rows; j++) {
+                    pts.push({
+                        x: approx.intPtr(j, 0)[0],
+                        y: approx.intPtr(j, 0)[1]
                     });
                 }
+
+                bestCandidate = {
+                    approx,
+                    pts,
+                    area: maxArea,
+                    score: 1.0,
+                    contourIdx: 0
+                };
+
+                hull.delete();
+                bestCnt.delete();
             }
 
-            // Cleanup
-            small.delete(); gray.delete(); blurred.delete(); binary.delete(); edges.delete();
-            contours.delete(); hierarchy.delete();
+            // === CAPTURE STAGE OUTPUTS FOR VISUALIZATION ===
 
-            let warpedCanvas, corners;
-            const MAX_WARP_DIM = 2000;
-            const warpScale = Math.min(MAX_WARP_DIM / src.cols, MAX_WARP_DIM / src.rows, 1.0);
+            // Stage 1: Preprocessing (bilateral filtered)
+            const stage1Canvas = document.createElement('canvas');
+            stage1Canvas.width = resized.cols;
+            stage1Canvas.height = resized.rows;
+            cv.imshow(stage1Canvas, smooth);
 
-            if (bestContour) {
-                const rawPts = ptsFromMat(bestContour);
-                bestContour.delete();
-                const inv = 1 / scaleFactor;
-                const scaledPts = rawPts.map(p => new Corner(Math.round(p.x * inv), Math.round(p.y * inv)));
+            // Stage 2: Edge Map
+            const stage2Canvas = document.createElement('canvas');
+            stage2Canvas.width = resized.cols;
+            stage2Canvas.height = resized.rows;
+            cv.imshow(stage2Canvas, edges);
+
+            // Stage 3: Brightness Map
+            const stage3Canvas = document.createElement('canvas');
+            stage3Canvas.width = resized.cols;
+            stage3Canvas.height = resized.rows;
+            cv.imshow(stage3Canvas, thresh);
+
+            // Stage 5: Combined Signal
+            const stage5Canvas = document.createElement('canvas');
+            stage5Canvas.width = resized.cols;
+            stage5Canvas.height = resized.rows;
+            cv.imshow(stage5Canvas, combined);
+
+            // Stage 6: Contours visualization
+            const stage6Canvas = document.createElement('canvas');
+            stage6Canvas.width = resized.cols;
+            stage6Canvas.height = resized.rows;
+            const contoursViz = cv.Mat.zeros(resized.rows, resized.cols, cv.CV_8UC3);
+            for (let i = 0; i < contours.size(); i++) {
+                const color = i === (bestCandidate?.contourIdx || -1)
+                    ? new cv.Scalar(0, 255, 0, 255)
+                    : new cv.Scalar(200, 200, 200, 255);
+                cv.drawContours(contoursViz, contours, i, color, 2);
+            }
+            cv.imshow(stage6Canvas, contoursViz);
+            contoursViz.delete();
+
+            // Stage 6b: All contours on black background
+            const stage6bCanvas = document.createElement('canvas');
+            stage6bCanvas.width = resized.cols;
+            stage6bCanvas.height = resized.rows;
+            const debugMat = cv.Mat.zeros(resized.rows, resized.cols, cv.CV_8UC3);
+            cv.drawContours(debugMat, contours, -1, new cv.Scalar(0, 255, 0, 255), 2);
+            cv.imshow(stage6bCanvas, debugMat);
+            debugMat.delete();
+
+            // Stage 7: Best candidate highlighted
+            const stage7Canvas = document.createElement('canvas');
+            stage7Canvas.width = resized.cols;
+            stage7Canvas.height = resized.rows;
+            const stage7Mat = cv.Mat.zeros(resized.rows, resized.cols, cv.CV_8UC3);
+            cv.cvtColor(combined, stage7Mat, cv.COLOR_GRAY2BGR);
+            if (bestCandidate) {
+                const pts = bestCandidate.pts;
+                const ptsMat = cv.matFromArray(pts.length, 1, cv.CV_32SC2, pts.flatMap(p => [p.x, p.y]));
+                // Create a MatVector for polylines
+                const ptsVector = new cv.MatVector();
+                ptsVector.push_back(ptsMat);
+                cv.polylines(stage7Mat, ptsVector, true, new cv.Scalar(0, 255, 0, 255), 3);
+                ptsVector.delete();
+                ptsMat.delete();
+                for (const pt of pts) {
+                    cv.circle(stage7Mat, new cv.Point(pt.x, pt.y), 5, new cv.Scalar(0, 165, 255, 255), -1);
+                }
+            }
+            cv.imshow(stage7Canvas, stage7Mat);
+            stage7Mat.delete();
+
+            // Prepare output
+            let corners = [
+                { x: 0, y: 0 },
+                { x: src.cols - 1, y: 0 },
+                { x: src.cols - 1, y: src.rows - 1 },
+                { x: 0, y: src.rows - 1 }
+            ];
+
+            let warpedCanvas = document.createElement('canvas');
+            warpedCanvas.width = src.cols;
+            warpedCanvas.height = src.rows;
+
+            if (bestCandidate) {
+                const scaledPts = bestCandidate.pts.map(p => ({
+                    x: p.x / scale,
+                    y: p.y / scale
+                }));
+
                 corners = orderPoints(scaledPts);
 
-                let warpSrc = src;
-                let warpCorners = corners;
-                if (warpScale < 1.0) {
-                    warpSrc = new cv.Mat();
-                    cv.resize(src, warpSrc, new cv.Size(
-                        Math.round(src.cols * warpScale),
-                        Math.round(src.rows * warpScale)
-                    ));
-                    warpCorners = corners.map(p => new Corner(
-                        Math.round(p.x * warpScale),
-                        Math.round(p.y * warpScale)
-                    ));
-                }
-
-                const { M, w, h } = buildTransform(warpCorners);
+                const { M, w, h } = buildTransform(corners);
                 let dst = new cv.Mat();
-                cv.warpPerspective(warpSrc, dst, M, new cv.Size(Math.round(w), Math.round(h)));
+                cv.warpPerspective(src, dst, M, new cv.Size(Math.round(w), Math.round(h)));
                 M.delete();
-                if (warpSrc !== src) warpSrc.delete();
 
-                warpedCanvas = document.createElement('canvas');
                 warpedCanvas.width = Math.round(w);
                 warpedCanvas.height = Math.round(h);
                 cv.imshow(warpedCanvas, dst);
                 dst.delete();
-            } else {
-                corners = [
-                    new Corner(0, 0),
-                    new Corner(src.cols - 1, 0),
-                    new Corner(src.cols - 1, src.rows - 1),
-                    new Corner(0, src.rows - 1),
-                ];
 
-                let fallbackSrc = src;
-                if (warpScale < 1.0) {
-                    fallbackSrc = new cv.Mat();
-                    cv.resize(src, fallbackSrc, new cv.Size(
-                        Math.round(src.cols * warpScale),
-                        Math.round(src.rows * warpScale)
-                    ));
-                }
-                warpedCanvas = document.createElement('canvas');
-                warpedCanvas.width = fallbackSrc.cols;
-                warpedCanvas.height = fallbackSrc.rows;
-                cv.imshow(warpedCanvas, fallbackSrc);
-                if (fallbackSrc !== src) fallbackSrc.delete();
+                bestCandidate.approx.delete();
+            } else {
+                cv.imshow(warpedCanvas, src);
             }
 
+            // Cleanup
             src.delete();
+            resized.delete();
+            gray.delete();
+            smooth.delete();
+            edges.delete();
+            thresh.delete();
+            combined.delete();
+            kernelRect.delete();
+            contours.delete();
+            hierarchy.delete();
 
             return {
                 corners,
@@ -496,13 +479,16 @@
                 width: warpedCanvas.width,
                 height: warpedCanvas.height,
                 debugImages: {
-                    grayscale: grayCanvas,
-                    blurred: blurredCanvas,
-                    binary: binaryCanvas,
-                    edges: edgesCanvas,
-                    contours: contoursCanvas,
+                    stage1: stage1Canvas,
+                    stage2: stage2Canvas,
+                    stage3: stage3Canvas,
+                    stage5: stage5Canvas,
+                    stage6: stage6Canvas,
+                    stage6b: stage6bCanvas,
+                    stage7: stage7Canvas,
+                    preprocessing: stage5Canvas
                 },
-                contourLog: contourDebugLog
+                contourLog: []
             };
         }
 
@@ -541,6 +527,12 @@
             return canvas;
         }
 
+        let currentImage = null;
+
+        function updateStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
         async function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -575,38 +567,16 @@
             img.src = url;
         }
 
-        let currentImage = null;
-
         function runDetection(imageSource) {
             try {
                 console.log('🔍 runDetection: START');
                 const t0 = performance.now();
-                // Get input values with defaults if inputs don't exist yet
-                const kernelSizeInput = document.getElementById('kernelSizeInput');
-                const kernelSizeIdx = kernelSizeInput ? parseInt(kernelSizeInput.value) : 6;
-                
-                const sigmaInput = document.getElementById('sigmaInput');
-                const sigma = sigmaInput ? parseFloat(sigmaInput.value) : 1.5;
-                
-                const blockSizeInput = document.getElementById('blockSizeInput');
-                const blockSizeIdx = blockSizeInput ? parseInt(blockSizeInput.value) : 5;
-                
-                const threshConstantInput = document.getElementById('threshConstantInput');
-                const threshConstant = threshConstantInput ? parseInt(threshConstantInput.value) : 2;
-                
-                const cannyThresh1Input = document.getElementById('cannyThresh1Input');
-                const cannyThresh1 = cannyThresh1Input ? parseInt(cannyThresh1Input.value) : 75;
-                
-                const cannyThresh2Input = document.getElementById('cannyThresh2Input');
-                const cannyThresh2 = cannyThresh2Input ? parseInt(cannyThresh2Input.value) : 200;
-                
-                const result = detectDocument(imageSource, kernelSizeIdx, sigma, blockSizeIdx, threshConstant, cannyThresh1, cannyThresh2);
+                const result = detectDocument(imageSource);
                 const elapsed = (performance.now() - t0).toFixed(0);
 
                 const overlayCanvas = createDebugOverlay(imageSource, result.corners);
 
-                const params = { kernelSizeIdx, sigma, blockSizeIdx, threshConstant, cannyThresh1, cannyThresh2 };
-                displayResults(imageSource, result, overlayCanvas, elapsed, params);
+                displayResults(imageSource, result, overlayCanvas, elapsed);
                 updateStatus(`✅ Detection completed in ${elapsed}ms`);
                 console.log('🔍 runDetection: COMPLETE');
             } catch (err) {
@@ -615,89 +585,49 @@
             }
         }
 
-        function displayResults(original, result, overlay, elapsed, params = {}) {
-            const { kernelSizeIdx = 6, sigma = 1.5, blockSizeIdx = 5, threshConstant = 2, cannyThresh1 = 75, cannyThresh2 = 200 } = params;
+function displayResults(original, result, overlay, elapsed) {
             console.log('📊 displayResults called, elapsed:', elapsed);
             const labels = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
-            
+
             const html = `
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
                     <div class="result-panel">
-                        <h3>1. Grayscale</h3>
-                        <canvas id="grayscale" width="${result.debugImages?.grayscale.width || 300}" height="${result.debugImages?.grayscale.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
-                    </div>
-                    <div class="result-panel" style="background: #f9f9f9;">
-                        <h3>Gaussian Blur Settings</h3>
-                        <div style="padding: 15px;">
-                            <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
-                                <label style="font-size: 13px; min-width: 100px;">Kernel Size:</label>
-                                <input type="number" id="kernelSizeInput" min="1" max="7" value="${kernelSizeIdx}" style="width: 60px; padding: 5px; font-size: 13px;">
-                                <small style="color: #666;">1=3×3, 2=5×5, 3=7×7, 4=9×9, 5=11×11, 6=13×13, 7=15×15</small>
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <label style="font-size: 13px; min-width: 100px;">Sigma:</label>
-                                <input type="number" id="sigmaInput" min="0" max="50" value="${sigma}" step="0.5" style="width: 60px; padding: 5px; font-size: 13px;">
-                            </div>
-                        </div>
+                        <h3>Stage 1: Preprocessing (Bilateral Filter)</h3>
+                        <canvas id="stage1" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>2. Blurred</h3>
-                        <canvas id="blurred" width="${result.debugImages?.blurred.width || 300}" height="${result.debugImages?.blurred.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
-                    </div>
-                    <div class="result-panel" style="background: #f9f9f9;">
-                        <h3>Adaptive Threshold Settings</h3>
-                        <div style="padding: 15px;">
-                            <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
-                                <label style="font-size: 13px; min-width: 100px;">Block Size:</label>
-                                <input type="number" id="blockSizeInput" min="1" max="10" value="${blockSizeIdx}" style="width: 60px; padding: 5px; font-size: 13px;">
-                                <small style="color: #666;">1=3, 2=5, 3=7, 4=9, 5=11, 6=13, 7=15, 8=17, 9=19, 10=21</small>
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <label style="font-size: 13px; min-width: 100px;">Constant:</label>
-                                <input type="number" id="threshConstantInput" min="-20" max="20" value="${threshConstant}" style="width: 60px; padding: 5px; font-size: 13px;">
-                            </div>
-                        </div>
+                        <h3>Stage 2: Edge Map (Canny + Dilate)</h3>
+                        <canvas id="stage2" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>3. Adaptive Threshold</h3>
-                        <canvas id="binary" width="${result.debugImages?.binary?.width || 300}" height="${result.debugImages?.binary?.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
-                    </div>
-                    <div class="result-panel" style="background: #f9f9f9;">
-                        <h3>Canny Edge Detection Settings</h3>
-                        <div style="padding: 15px;">
-                            <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
-                                <label style="font-size: 13px; min-width: 100px;">Threshold 1:</label>
-                                <input type="number" id="cannyThresh1Input" min="0" max="500" value="${cannyThresh1}" style="width: 60px; padding: 5px; font-size: 13px;">
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <label style="font-size: 13px; min-width: 100px;">Threshold 2:</label>
-                                <input type="number" id="cannyThresh2Input" min="0" max="500" value="${cannyThresh2}" style="width: 60px; padding: 5px; font-size: 13px;">
-                            </div>
-                        </div>
+                        <h3>Stage 3: Brightness Map (Adaptive Threshold)</h3>
+                        <canvas id="stage3" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>4. Canny Edges</h3>
-                        <canvas id="edges" width="${result.debugImages?.edges?.width || 300}" height="${result.debugImages?.edges?.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                        <h3>Stage 5: Combined Signal (Edge AND Brightness)</h3>
+                        <canvas id="stage5" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>5. Contours (green = selected, gray = other)</h3>
-                        <canvas id="contours" width="${result.debugImages?.contours.width || 300}" height="${result.debugImages?.contours.height || 400}" style="display:block; border: 1px solid #ddd;"></canvas>
+                        <h3>Stage 6: Contours Found (Gray=filtered, Green=selected)</h3>
+                        <canvas id="stage6" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>Contour Selection Debug Log</h3>
-                        <div style="padding: 10px; font-family: monospace; font-size: 12px; line-height: 1.5; background: #f9f9f9; max-height: 300px; overflow-y: auto;">
-                            ${result.contourLog?.map(line => `<div>${line}</div>`).join('') || 'No log'}
-                        </div>
+                        <h3>Stage 6b: All Contours Detected (Green on Black)</h3>
+                        <canvas id="stage6b" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>Original with Crop Box</h3>
-                        <canvas id="overlay" width="${overlay.width}" height="${overlay.height}" style="display:block; border: 1px solid #ddd;"></canvas>
+                        <h3>Stage 7: Best Candidate Highlighted</h3>
+                        <canvas id="stage7" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
                     <div class="result-panel">
-                        <h3>Warped/Cropped Document</h3>
-                        <canvas id="warped" width="${result.width}" height="${result.height}" style="display:block; border: 1px solid #ddd;"></canvas>
+                        <h3>Original with Detected Corners</h3>
+                        <canvas id="overlay" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
-                    <div class="result-panel">
+                    <div class="result-panel" style="grid-column: 1 / -1;">
+                        <h3>Stage 8: Warped/Cropped Document</h3>
+                        <canvas id="warped" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel" style="grid-column: 1 / -1;">
                         <h3>Detection Results (${elapsed}ms)</h3>
                         <div class="corners">
                             <div style="margin-bottom:10px;"><strong>Corners (tl → tr → br → bl):</strong></div>
@@ -708,7 +638,8 @@
                                 </div>
                             `).join('')}
                             <div style="margin-top:15px;border-top:1px solid #e0e0e0;padding-top:10px;">
-                                <strong>Warped size:</strong> ${result.width} × ${result.height}px
+                                <strong>Warped size:</strong> ${result.width} × ${result.height}px<br>
+                                <strong>Pipeline:</strong> 8-Stage: Bilateral Filter → Edge Map → Brightness Map → Morphology → Combine → Contours → Score → Warp
                             </div>
                         </div>
                     </div>
@@ -716,48 +647,44 @@
             `;
 
             document.getElementById('results').innerHTML = html;
-            
-            // Attach event listeners to number inputs
-            ['kernelSizeInput', 'sigmaInput', 'blockSizeInput', 'threshConstantInput', 'cannyThresh1Input', 'cannyThresh2Input'].forEach(id => {
-                const input = document.getElementById(id);
-                if (input) {
-                    input.addEventListener('change', () => {
-                        if (currentImage) {
-                            runDetection(currentImage);
-                        }
-                    });
-                }
-            });
-            
-            // Draw debug images with proper sizing
-            if (result.debugImages) {
-                const drawCanvasToElement = (elementId, sourceCanvas) => {
-                    const el = document.getElementById(elementId);
-                    if (el) {
-                        el.width = sourceCanvas.width;
-                        el.height = sourceCanvas.height;
-                        const ctx = el.getContext('2d');
-                        ctx.drawImage(sourceCanvas, 0, 0);
-                    }
-                };
-                
-                drawCanvasToElement('grayscale', result.debugImages.grayscale);
-                drawCanvasToElement('blurred', result.debugImages.blurred);
-                drawCanvasToElement('binary', result.debugImages.binary);
-                drawCanvasToElement('edges', result.debugImages.edges);
-                drawCanvasToElement('contours', result.debugImages.contours);
-            }
-            
-            // Draw main results
-            const overlayCtx = document.getElementById('overlay').getContext('2d');
-            overlayCtx.drawImage(overlay, 0, 0);
-            
-            const warpedCtx = document.getElementById('warped').getContext('2d');
-            warpedCtx.drawImage(result.warped, 0, 0);
-        }
 
-        function updateStatus(msg) {
-            document.getElementById('status').textContent = msg;
+            // Draw all stage canvases
+            const drawStageCanvas = (elementId, sourceCanvas) => {
+                const el = document.getElementById(elementId);
+                if (el && sourceCanvas) {
+                    el.width = sourceCanvas.width;
+                    el.height = sourceCanvas.height;
+                    const ctx = el.getContext('2d');
+                    ctx.drawImage(sourceCanvas, 0, 0);
+                }
+            };
+
+            if (result.debugImages) {
+                drawStageCanvas('stage1', result.debugImages.stage1);
+                drawStageCanvas('stage2', result.debugImages.stage2);
+                drawStageCanvas('stage3', result.debugImages.stage3);
+                drawStageCanvas('stage5', result.debugImages.stage5);
+                drawStageCanvas('stage6', result.debugImages.stage6);
+                drawStageCanvas('stage6b', result.debugImages.stage6b);
+                drawStageCanvas('stage7', result.debugImages.stage7);
+            }
+
+            // Draw overlay and warped
+            const overlayCanvas = document.getElementById('overlay');
+            if (overlayCanvas) {
+                overlayCanvas.width = overlay.width;
+                overlayCanvas.height = overlay.height;
+                const overlayCtx = overlayCanvas.getContext('2d');
+                overlayCtx.drawImage(overlay, 0, 0);
+            }
+
+            const warpedCanvas = document.getElementById('warped');
+            if (warpedCanvas) {
+                warpedCanvas.width = result.width;
+                warpedCanvas.height = result.height;
+                const warpedCtx = warpedCanvas.getContext('2d');
+                warpedCtx.drawImage(result.warped, 0, 0);
+            }
         }
 
         // Setup slider event listeners
@@ -773,9 +700,9 @@
                 console.warn('Inputs not found in DOM yet');
                 return;
             }
-            
+
             console.log('Setting up inputs...');
-            
+
             const kernelSizeValue = document.getElementById('kernelSizeValue');
             const sigmaSlider = document.getElementById('sigmaSlider');
             const sigmaValue = document.getElementById('sigmaValue');
@@ -787,10 +714,10 @@
             const cannyThresh1Value = document.getElementById('cannyThresh1Value');
             const cannyThresh2Slider = document.getElementById('cannyThresh2Slider');
             const cannyThresh2Value = document.getElementById('cannyThresh2Value');
-            
+
             const kernelSizes = [3, 5, 7, 9, 11, 13, 15];
             const blockSizes = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21];
-            
+
             kernelSizeSlider.addEventListener('input', function(e) {
                 console.log('kernelSizeSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
                 const idx = parseInt(e.target.value);
@@ -803,7 +730,7 @@
                     console.warn('Cannot run detection: currentImage is null/undefined');
                 }
             }, false);
-            
+
             sigmaSlider.addEventListener('input', function(e) {
                 console.log('sigmaSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
                 const val = parseFloat(e.target.value);
@@ -866,7 +793,7 @@
                     runDetection(currentImage);
                 }
             }, false);
-            
+
             // Initialize slider fills
             updateSliderFill(kernelSizeSlider);
             updateSliderFill(sigmaSlider);
@@ -874,26 +801,26 @@
             updateSliderFill(threshConstantSlider);
             updateSliderFill(cannyThresh1Slider);
             updateSliderFill(cannyThresh2Slider);
-            
+
             // Sync display values to current slider positions
             const kernelSizeIdx = parseInt(kernelSizeSlider.value);
             kernelSizeValue.textContent = kernelSizes[kernelSizeIdx];
-            
+
             const sigmaVal = parseFloat(sigmaSlider.value);
             sigmaValue.textContent = sigmaVal.toFixed(1);
-            
+
             const blockSizeIdx = parseInt(blockSizeSlider.value);
             blockSizeValue.textContent = blockSizes[blockSizeIdx];
-            
+
             const threshConstantVal = parseInt(threshConstantSlider.value);
             threshConstantValue.textContent = threshConstantVal;
-            
+
             const cannyThresh1Val = parseInt(cannyThresh1Slider.value);
             cannyThresh1Value.textContent = cannyThresh1Val;
-            
+
             const cannyThresh2Val = parseInt(cannyThresh2Slider.value);
             cannyThresh2Value.textContent = cannyThresh2Val;
-            
+
             console.log('Sliders setup complete');
         }
 
