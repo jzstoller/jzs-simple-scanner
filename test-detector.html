@@ -272,6 +272,13 @@ function detectDocument(imageSource) {
             const scale = Math.min(1.0, 1200 / src.cols);
             cv.resize(src, resized, new cv.Size(0, 0), scale, scale);
 
+            // Convert RGBA -> RGB -> HSV for color analysis
+            const rgb = new cv.Mat();
+            cv.cvtColor(resized, rgb, cv.COLOR_RGBA2RGB);
+            const hsv = new cv.Mat();
+            cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+            rgb.delete();
+
             // Convert to grayscale
             let gray = new cv.Mat();
             cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
@@ -336,6 +343,17 @@ function detectDocument(imageSource) {
             }
 
             // === CAPTURE STAGE OUTPUTS FOR VISUALIZATION ===
+
+            // Stage 0.5: HSV Saturation (color intensity - high S = colorful carpet, low S = white/cream paper)
+            const hsvChannels = new cv.MatVector();
+            cv.split(hsv, hsvChannels);  // Split HSV into H, S, V channels
+            const saturation = hsvChannels.get(1);  // Get Saturation channel (index 1)
+            const stage05Canvas = document.createElement('canvas');
+            stage05Canvas.width = resized.cols;
+            stage05Canvas.height = resized.rows;
+            cv.imshow(stage05Canvas, saturation);
+            hsvChannels.delete();
+            // Note: saturation is not deleted here because it's the actual channel Mat from the split
 
             // Stage 1: Preprocessing (bilateral filtered)
             const stage1Canvas = document.createElement('canvas');
@@ -489,6 +507,8 @@ function detectDocument(imageSource) {
             resized.delete();
             gray.delete();
             smooth.delete();
+            hsv.delete();
+            saturation.delete();
             edges.delete();
             thresh.delete();
             combined.delete();
@@ -503,6 +523,7 @@ function detectDocument(imageSource) {
                 width: warpedCanvas.width,
                 height: warpedCanvas.height,
                 debugImages: {
+                    stage05: stage05Canvas,
                     stage1: stage1Canvas,
                     stage2: stage2Canvas,
                     stage3: stage3Canvas,
@@ -616,6 +637,10 @@ function displayResults(original, result, overlay, elapsed) {
             const html = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
                     <div class="result-panel">
+                        <h3>Stage 0.5: HSV Saturation (low=white paper, high=colorful carpet)</h3>
+                        <canvas id="stage05" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
                         <h3>Stage 1: Preprocessing (Bilateral Filter)</h3>
                         <canvas id="stage1" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
                     </div>
@@ -684,6 +709,7 @@ function displayResults(original, result, overlay, elapsed) {
             };
 
             if (result.debugImages) {
+                drawStageCanvas('stage05', result.debugImages.stage05);
                 drawStageCanvas('stage1', result.debugImages.stage1);
                 drawStageCanvas('stage2', result.debugImages.stage2);
                 drawStageCanvas('stage3', result.debugImages.stage3);
