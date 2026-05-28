@@ -40,63 +40,74 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
 
   const src = cv.imread(srcCanvas);
 
-  // Scale down to max 1500px for reliable, fast detection on high-res phone photos
-  const MAX_DIM = 1500;
-  const scaleFactor = Math.min(MAX_DIM / src.cols, MAX_DIM / src.rows, 1.0);
-  let small = new cv.Mat();
-  if (scaleFactor < 1.0) {
-    cv.resize(src, small, new cv.Size(Math.round(src.cols * scaleFactor), Math.round(src.rows * scaleFactor)));
-  } else {
-    src.copyTo(small);
-  }
+  // Stage 1: Preprocessing
+  // Resize to ~1200px width for speed
+  let resized = new cv.Mat();
+  const scale = Math.min(1.0, 1200 / src.cols);
+  cv.resize(src, resized, new cv.Size(0, 0), scale, scale);
 
-  // Grayscale → Blur → Adaptive Threshold → Canny Edges → Contours
+  // Convert to grayscale
   let gray = new cv.Mat();
-  cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY, 0);
-  let blurred = new cv.Mat();
-  const ksize = new cv.Size(5, 5);
-  cv.GaussianBlur(gray, blurred, ksize, 0);
-  
-  // Adaptive threshold
-  let binary = new cv.Mat();
-  cv.adaptiveThreshold(blurred, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
-  
-  // Canny edges on the threshold
+  cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
+
+  // Bilateral filter (suppress texture, preserve edges)
+  let smooth = new cv.Mat();
+  cv.bilateralFilter(gray, smooth, 9, 75, 75, cv.BORDER_DEFAULT);
+
+  // Stage 2: Create Multiple Detection Maps
+  // A. Edge Map
   let edges = new cv.Mat();
-  cv.Canny(binary, edges, 75, 200);
-  
-  // Find contours on edges
+  cv.Canny(smooth, edges, 50, 150);
+
+  // Dilate to thicken edges
+  const kernelRect = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+  cv.dilate(edges, edges, kernelRect);
+
+  // B. Adaptive Brightness Map
+  let thresh = new cv.Mat();
+  cv.adaptiveThreshold(smooth, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 15);
+
+  // C. Morphological Cleanup
+  cv.morphologyEx(thresh, thresh, cv.MORPH_OPEN, kernelRect);
+  cv.morphologyEx(thresh, thresh, cv.MORPH_CLOSE, kernelRect);
+
+  // Stage 3: Combine Signals (edge AND brightness)
+  let combined = new cv.Mat();
+  cv.bitwise_and(thresh, edges, combined);
+
+  // Stage 4: Find Contours
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
-  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  // Use RETR_LIST to get all contours
+  cv.findContours(combined, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-  // Find the largest valid 4-point contour (must be >3% of image area)
-  const minArea = small.cols * small.rows * 0.03;
-  let maxArea = minArea;
-  let bestContour: any = null;
+  // Stage 5-6: Find largest contour and apply hull + approximation
+  let bestCnt: any = null;
+  let maxArea = 0;
 
   for (let i = 0; i < contours.size(); i++) {
     const cnt = contours.get(i);
-    const peri = cv.arcLength(cnt, true);
-    const approx = new cv.Mat();
-    // More aggressive epsilon to force simplification to 4 points
-    cv.approxPolyDP(cnt, approx, 0.05 * peri, true);
-    const area = cv.contourArea(approx);
-    if (approx.rows === 4 && area > maxArea) {
-      const pts = ptsFromMat(approx);
-      if (isValidQuad(pts)) {
-        maxArea = area;
-        if (bestContour) bestContour.delete();
-        bestContour = approx.clone();
-      }
+    const area = cv.contourArea(cnt);
+    if (area > maxArea) {
+      maxArea = area;
+      if (bestCnt) bestCnt.delete();
+      bestCnt = cnt;
+    } else {
+      cnt.delete();
     }
-    approx.delete();
-    cnt.delete();
   }
 
-  // Cleanup detection intermediates
-  small.delete(); gray.delete(); blurred.delete(); binary.delete(); edges.delete();
-  contours.delete(); hierarchy.delete();
+  // Compute convex hull to smooth out squiggly edges
+  let approx: any = null;
+  if (bestCnt) {
+    const hull = new cv.Mat();
+    approx = new cv.Mat();
+    cv.convexHull(bestCnt, hull);
+    const peri = cv.arcLength(hull, true);
+    cv.approxPolyDP(hull, approx, 0.04 * peri, true);
+    hull.delete();
+    bestCnt.delete();
+  }
 
   // Sample a pixel from src to verify cv.imread produced real data
   const srcSamplePixel: number[] = src.rows > 0 && src.cols > 0
@@ -112,12 +123,20 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
   let corners: [Corner, Corner, Corner, Corner];
   let dstSamplePixel: number[] = [-1, -1, -1, -1];
 
-  if (bestContour) {
-    const rawPts = ptsFromMat(bestContour);
-    bestContour.delete();
+  if (approx && approx.rows > 0) {
+    // Extract corner points from approx
+    const pts: Corner[] = [];
+    for (let i = 0; i < approx.rows; i++) {
+      pts.push({
+        x: approx.intPtr(i, 0)[0],
+        y: approx.intPtr(i, 0)[1]
+      });
+    }
+    approx.delete();
+
     // Scale corners back to original full-resolution coordinates
-    const inv = 1 / scaleFactor;
-    const scaledPts = rawPts.map(p => ({ x: Math.round(p.x * inv), y: Math.round(p.y * inv) }));
+    const inv = 1 / scale;
+    const scaledPts = pts.map(p => ({ x: Math.round(p.x * inv), y: Math.round(p.y * inv) }));
     corners = orderPoints(scaledPts) as [Corner, Corner, Corner, Corner];
 
     // Down-scale source for warp if needed, then scale corners accordingly
@@ -155,6 +174,8 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     dst.delete();
   } else {
     // Fallback: no document found, return the full image as-is
+    if (approx) approx.delete();
+
     corners = [
       { x: 0, y: 0 },
       { x: src.cols - 1, y: 0 },
@@ -176,6 +197,17 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     cv.imshow(warpedCanvas, fallbackSrc);
     if (fallbackSrc !== src) fallbackSrc.delete();
   }
+
+  // Cleanup
+  resized.delete();
+  gray.delete();
+  smooth.delete();
+  edges.delete();
+  thresh.delete();
+  combined.delete();
+  kernelRect.delete();
+  contours.delete();
+  hierarchy.delete();
 
   // Capture src metadata before deleting
   const srcRows = src.rows;
@@ -250,56 +282,6 @@ export function createDebugOverlay(
   });
 
   return canvas;
-}
-
-function ptsFromMat(mat: any): Corner[] {
-  const pts: Corner[] = [];
-  for (let i = 0; i < 4; i++) {
-    pts.push({ x: mat.intPtr(i, 0)[0], y: mat.intPtr(i, 0)[1] });
-  }
-  return pts;
-}
-
-/** Validate if quad looks like a rectangular document */
-function isValidQuad(pts: Corner[]): boolean {
-  // Check for near-duplicate points (degenerate shapes)
-  for (let i = 0; i < pts.length; i++) {
-    for (let j = i + 1; j < pts.length; j++) {
-      if (dist(pts[i], pts[j]) < 10) return false;
-    }
-  }
-  
-  const ordered = orderPoints(pts);
-  const [tl, tr, br, bl] = ordered;
-  
-  // Get all 4 side lengths
-  const topDist = dist(tl, tr);
-  const bottomDist = dist(bl, br);
-  const leftDist = dist(tl, bl);
-  const rightDist = dist(tr, br);
-  
-  // Check aspect ratio - documents are typically 0.5 to 2.5 (portrait to landscape)
-  // Check aspect ratio - documents are typically 0.3 to 3.0 (portrait to landscape)
-  const widthAvg = (topDist + bottomDist) / 2;
-  const heightAvg = (leftDist + rightDist) / 2;
-  const aspectRatio = widthAvg / heightAvg;
-  
-  if (aspectRatio < 0.3 || aspectRatio > 3.0) return false;
-  
-  // Check that opposite sides are similar (reject trapezoids)
-  // Top and bottom should be similar length
-  const topBottomRatio = Math.max(topDist, bottomDist) / Math.min(topDist, bottomDist);
-  if (topBottomRatio > 1.5) return false;  // more strict than before
-  
-  // Left and right should be similar length
-  const leftRightRatio = Math.max(leftDist, rightDist) / Math.min(leftDist, rightDist);
-  if (leftRightRatio > 1.5) return false;
-  
-  // Check that all sides have reasonable length (not tiny)
-  const minSideLength = Math.min(topDist, bottomDist, leftDist, rightDist);
-  if (minSideLength < 20) return false;
-  
-  return true;
 }
 
 function orderPoints(pts: Corner[]): Corner[] {
