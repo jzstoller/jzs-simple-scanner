@@ -35,9 +35,11 @@ async function appendToLogFile(app: App, message: string) {
 class CameraModal extends Modal {
 	chosenFolderPath: string;
 	videoStream: MediaStream = null;
-	constructor(app: App, cameraSettings: CameraPluginSettings) {
+	shouldOpenFilePicker: boolean = false;
+	constructor(app: App, cameraSettings: CameraPluginSettings, shouldOpenFilePicker: boolean = false) {
 		super(app);
 		this.chosenFolderPath = cameraSettings.chosenFolderPath;
+		this.shouldOpenFilePicker = shouldOpenFilePicker;
 	}
 
 	async onOpen() {
@@ -67,7 +69,6 @@ class CameraModal extends Modal {
 		});
 		filePicker.id = "filepicker";
 		filePicker.accept = "image/*";
-		filePicker.capture = "camera"; // back camera by default for mobile screens
 
 		filePicker.style.display = "none";
 
@@ -123,7 +124,7 @@ class CameraModal extends Modal {
 			const seconds = String(now.getSeconds()).padStart(2, '0');
 			const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 				const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-					let logMsg = `[PLUGIN v10] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
+					let logMsg = `[PLUGIN v12] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 				new Notice("Loading OpenCV.js...");
 				logMsg += 'Loading OpenCV.js...\n';
 				try {
@@ -381,6 +382,13 @@ class CameraModal extends Modal {
 		};
 
 		videoEl.srcObject = this.videoStream;
+
+		// Trigger file picker if this modal was opened for upload
+		if (this.shouldOpenFilePicker) {
+			setTimeout(() => {
+				filePicker.click();
+			}, 100);
+		}
 	}
 
 	onClose() {
