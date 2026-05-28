@@ -1,7 +1,7 @@
 {
 	"id": "jzs_scan",
 	"name": "JZS Doc Scan",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"minAppVersion": "0.14.6",
 	"description": "JZS Camera plugin for Obsidian",
 	"author": "Extski",

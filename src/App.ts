@@ -9,6 +9,9 @@ export default class ObsidianCamera extends Plugin {
     this.addRibbonIcon("camera", "JZS Doc Scan", (evt: MouseEvent) => {
       new CameraModal(this.app, this.settings).open();
     });
+    this.addRibbonIcon("arrow-up", "JZS Doc Upload", (evt: MouseEvent) => {
+      new CameraModal(this.app, this.settings, true).open();
+    });
     this.addSettingTab(new CameraSettingsTab(this.app, this));
 
     this.addCommand({
