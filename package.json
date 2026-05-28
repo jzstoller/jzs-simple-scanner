@@ -1,6 +1,6 @@
 {
 	"name": "jzs_obsidian-camera-plugin",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "JZS_Camera plugin for Obsidian (https://obsidian.md)",
 	"main": "main.js",
 	"scripts": {
