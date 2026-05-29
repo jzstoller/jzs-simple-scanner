@@ -25,9 +25,27 @@ export default class ObsidianCamera extends Plugin {
     this.addCommand({
       id: "Open camera modal",
       name: "Open camera modal / File Picker",
+      icon: "camera",
       callback: () => {
-        new CameraModal(this.app, this.settings).open();
+        if (Platform.isIosApp) {
+          CameraModal.triggerIosUpload(this.app, this.settings);
+        } else {
+          new CameraModal(this.app, this.settings).open();
+        }
       },
+    });
+
+    this.addCommand({
+      id: "jzs-doc-upload",
+      name: "JZS Doc Upload",
+      icon: "scan",
+      callback: () => {
+        if (Platform.isIosApp) {
+          CameraModal.triggerIosUpload(this.app, this.settings);
+        } else {
+          new CameraModal(this.app, this.settings, true).open();
+        }
+      }
     });
   }
 
