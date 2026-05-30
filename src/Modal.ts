@@ -62,10 +62,6 @@ class CameraModal extends Modal {
 				text: "Switch Camera",
 			});
 		}
-		const scanButton = firstRow.createEl("button", {
-			text: "Scan",
-		});
-		scanButton.style.display = "none";
 		firstRow.style.display = "none";
 		secondRow.style.display = "none";
 
@@ -92,221 +88,6 @@ class CameraModal extends Modal {
 
 		secondRow.appendChild(label);
 
-		let scanProcessing = false;
-
-		if (Platform.isIosApp) {
-			const scanPicker = secondRow.createEl("input", { type: "file" });
-			scanPicker.accept = "image/*";
-			scanPicker.capture = "environment";
-			scanPicker.style.display = "none";
-
-			scanButton.style.display = "inline-block";
-			scanButton.onclick = () => {
-				scanPicker.click();
-			};
-			scanPicker.onchange = async () => {
-				if (scanProcessing) {
-					const msg = "Scan already in progress. Please wait.";
-					new Notice(msg);
-					return;
-				}
-				scanProcessing = true; // Lock immediately
-				const scanId = Math.random().toString(36).substring(7);
-				await appendToLogFile(this.app, `[scanPicker.onchange] fired with scanId=${scanId}. files=${scanPicker.files?.length ?? 0}`);
-				if (!scanPicker.files?.length) {
-					const msg = "No file selected for scan.";
-					new Notice(msg);
-					await appendToLogFile(this.app, msg);
-					scanProcessing = false;
-					return;
-				}
-				const selectedFile = scanPicker.files[0];
-			const now = new Date();
-			const month = String(now.getMonth() + 1).padStart(2, '0');
-			const day = String(now.getDate()).padStart(2, '0');
-			const year = String(now.getFullYear()).slice(-2);
-			const hours = String(now.getHours()).padStart(2, '0');
-			const minutes = String(now.getMinutes()).padStart(2, '0');
-			const seconds = String(now.getSeconds()).padStart(2, '0');
-			const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
-				const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-					let logMsg = `[PLUGIN v19] scanId=${scanId} Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
-
-				try {
-					// Pass app and logger to loadOpenCV to capture all loader events
-					await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
-					new Notice("OpenCV.js loaded. Reading image...");
-					logMsg += 'OpenCV.js loaded. Reading image...\n';
-				} catch (err) {
-					const msg = "Failed to load OpenCV.js: " + err.message;
-					new Notice(msg);
-					logMsg += msg + '\n';
-					await appendToLogFile(this.app, logMsg);
-					return;
-				}
-				const reader = new FileReader();
-				reader.onload = async (e) => {
-					const dataUrl = e.target.result as string;
-					const dataUrlHash = dataUrl.substring(0, 50) + '...' + dataUrl.substring(dataUrl.length - 20);
-					logMsg += `[${scanId}] FileReader loaded: data URL length=${dataUrl.length}, hash=${dataUrlHash}\n`;
-					const img = new Image();
-					img.onload = async () => {
-						new Notice("Image loaded. Running document detection...");
-						logMsg += `[${scanId}] Image loaded: ${img.width}×${img.height}px. Running document detection...\n`;
-						try {
-							const detectionLogger = (msg: string) => {
-								logMsg += `[${scanId}-DETECT] ${msg}\n`;
-							};
-							const result = detectDocument(img, detectionLogger);
-							if (result.debug) {
-								const d = result.debug;
-							logMsg += `[${scanId}-DEBUG] src=${d.srcCols}×${d.srcRows} type=${d.srcType} pixel0=[${d.srcSamplePixel}]\n`;
-							logMsg += `[${scanId}-DEBUG] dst=${d.dstCols}×${d.dstRows} midPixel=[${d.dstSamplePixel}] warpScale=${d.warpScaleUsed.toFixed(3)}\n`;
-							}
-							logMsg += `Document detected!\n`;
-
-							// Convert cropped image to blob and save
-							result.warped.toBlob(async (croppedBlob) => {
-								if (!croppedBlob) {
-									const msg = "Failed to convert warped image to blob";
-									new Notice(msg);
-									logMsg += msg + '\n';
-									await appendToLogFile(this.app, logMsg);
-									return;
-								}
-
-								const croppedName = `cropped-${timestampFilename}.png`;
-								const croppedPath = this.chosenFolderPath + "/" + croppedName;
-
-								const folderExists = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
-								if (!folderExists) await this.app.vault.createFolder(this.chosenFolderPath);
-
-								// Force delete old cropped file
-								try {
-									const oldCropped = this.app.vault.getAbstractFileByPath(croppedPath);
-									if (oldCropped) await this.app.vault.delete(oldCropped);
-
-								} catch (e) {
-									logMsg += `[${scanId}] Could not delete old cropped: ${e}\n`;
-								}
-
-								// Always save cropped image
-								await this.app.vault.createBinary(croppedPath, await croppedBlob.arrayBuffer());
-								logMsg += `[${scanId}] Saved cropped image as ${croppedName} (${croppedBlob.size} bytes)\n`;
-
-
-								// Optionally save overlay if setting is enabled
-								if (this.cameraSettings.showBoundingBox) {
-									const overlayCanvas = createDebugOverlay(img, result.corners);
-
-									overlayCanvas.toBlob(async (overlayBlob: Blob | null) => {
-										if (!overlayBlob) {
-											const msg = "Failed to convert overlay image to blob";
-											logMsg += msg + '\n';
-										} else {
-											const overlayName = `overlay-${timestampFilename}.png`;
-											const overlayPath = this.chosenFolderPath + "/" + overlayName;
-
-											// Delete old overlay if exists
-											try {
-												const oldOverlay = this.app.vault.getAbstractFileByPath(overlayPath);
-												if (oldOverlay) await this.app.vault.delete(oldOverlay);
-												logMsg += `[${scanId}] Deleted old overlay file\n`;
-											} catch (e) {
-												logMsg += `[${scanId}] Could not delete old overlay: ${e}\n`;
-											}
-
-											// Save new overlay
-											await this.app.vault.createBinary(overlayPath, await overlayBlob.arrayBuffer());
-											logMsg += `[${scanId}] Saved overlay image as ${overlayName} (${overlayBlob.size} bytes)\n`;
-
-											new Notice(`Adding images to vault...`);
-											// Insert both images into the note
-											if (view) {
-
-												const cursor = view.editor.getCursor();
-												view.editor.replaceRange(`![[${overlayPath}]]\n![[${croppedPath}]]\n`, cursor);
-											} else {
-												new Notice(`Saved to ${croppedPath} and ${overlayPath}`);
-											}
-
-											// Show in UI
-											const resultDiv = document.createElement('div');
-											resultDiv.style.marginTop = '16px';
-											const label = document.createElement('div');
-											label.textContent = 'Detected Document:';
-											label.style.fontWeight = 'bold';
-											resultDiv.appendChild(label);
-											resultDiv.appendChild(result.warped);
-											contentEl.appendChild(resultDiv);
-
-
-											await appendToLogFile(this.app, logMsg);
-											scanProcessing = false;
-											this.close();
-										}
-									}, 'image/png');
-								} else {
-									// Setting is OFF - only save cropped, skip overlay
-									new Notice(`Adding image to vault...`);
-									if (view) {
-										const cursor = view.editor.getCursor();
-										view.editor.replaceRange(`![[${croppedPath}]]\n`, cursor);
-									} else {
-										new Notice(`Saved to ${croppedPath}`);
-									}
-
-									// Show in UI
-									const resultDiv = document.createElement('div');
-									resultDiv.style.marginTop = '16px';
-									const label = document.createElement('div');
-									label.textContent = 'Detected Document:';
-									label.style.fontWeight = 'bold';
-									resultDiv.appendChild(label);
-									resultDiv.appendChild(result.warped);
-									contentEl.appendChild(resultDiv);
-
-
-									await appendToLogFile(this.app, logMsg);
-									scanProcessing = false;
-									this.close();
-								}
-							}, 'image/png');
-						} catch (err) {
-							logMsg += `Document detection failed: ${err.message}\n`;
-							new Notice("Document detection failed: " + err.message);
-							scanProcessing = false;
-							if (window.console && window.console.error) {
-								console.error("Document detection error:", err);
-							}
-							await appendToLogFile(this.app, logMsg);
-						}
-					};
-					img.onerror = async () => {
-						const msg = "Failed to load image for detection";
-						new Notice(msg);
-						logMsg += msg + '\n';
-						if (window.console && window.console.error) {
-							console.error("Image failed to load for detection");
-						}
-						await appendToLogFile(this.app, logMsg);
-					};
-							img.src = dataUrl;
-				};
-				reader.onerror = async (e) => {
-					const msg = "Failed to read image file for detection";
-					new Notice(msg);
-					logMsg += msg + '\n';
-					if (window.console && window.console.error) {
-						console.error("FileReader error:", e);
-					}
-					await appendToLogFile(this.app, logMsg);
-				};
-				reader.readAsDataURL(selectedFile);
-			// Reset file input immediately so selecting the same file again will trigger onchange
-			setTimeout(() => { scanPicker.value = ''; }, 100);
-			};
-		}
 
 		this.videoStream = null;
 		let cameraIndex = 0;
@@ -359,11 +140,7 @@ class CameraModal extends Modal {
 		};
 
 		filePicker.onchange = async () => {
-			await appendToLogFile(this.app, `[filePicker.onchange] fired. scanProcessing=${scanProcessing} files=${filePicker.files?.length ?? 0}`);
-			if (scanProcessing) {
-				await appendToLogFile(this.app, '[filePicker.onchange] blocked by scanProcessing guard');
-				return;
-			}
+			await appendToLogFile(this.app, `[filePicker.onchange] fired. files=${filePicker.files?.length ?? 0}`);
 			if (!filePicker.files?.length) return;
 			const selectedFile = filePicker.files[0];
 			label.textContent = `Selected: ${selectedFile.name}`;
@@ -469,7 +246,7 @@ class CameraModal extends Modal {
 		const seconds = String(new Date().getSeconds()).padStart(2, '0');
 		const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 		const scanTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-		let logMsg = `[PLUGIN v19] Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
+		let logMsg = `[PLUGIN v18] Scan started: ${scanTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 
 		try {
 			await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
@@ -491,10 +268,7 @@ class CameraModal extends Modal {
 				new Notice("Image loaded. Running document detection...");
 				logMsg += `Image loaded: ${img.width}×${img.height}px. Running document detection...\n`;
 				try {
-					const detectionLogger = (msg: string) => {
-						logMsg += `[DETECT] ${msg}\n`;
-					};
-					const result = detectDocument(img, detectionLogger);
+					const result = detectDocument(img);
 					if (result.debug) {
 						const d = result.debug;
 					logMsg += `[DEBUG] ${d.srcCols}×${d.srcRows} → ${d.dstCols}×${d.dstRows} (warpScale=${d.warpScaleUsed.toFixed(3)})\n`;
@@ -644,7 +418,7 @@ class CameraModal extends Modal {
 		const seconds = String(new Date().getSeconds()).padStart(2, '0');
 		const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 		const uploadTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
-		let logMsg = `[PLUGIN v19] Upload started: ${uploadTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
+		let logMsg = `[PLUGIN v18] Upload started: ${uploadTimestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;
 
 		try {
 			await loadOpenCV(this.app, (msg) => { logMsg += msg + '\n'; });
@@ -666,10 +440,7 @@ class CameraModal extends Modal {
 				new Notice("Image loaded. Running document detection...");
 				logMsg += `Image loaded: ${img.width}×${img.height}px. Running document detection...\n`;
 				try {
-					const detectionLogger = (msg: string) => {
-						logMsg += `[DETECT] ${msg}\n`;
-					};
-					const result = detectDocument(img, detectionLogger);
+					const result = detectDocument(img);
 					if (result.debug) {
 						const d = result.debug;
 					logMsg += `[DEBUG] ${d.srcCols}×${d.srcRows} → ${d.dstCols}×${d.dstRows} (warpScale=${d.warpScaleUsed.toFixed(3)})\n`;
@@ -787,26 +558,6 @@ class CameraModal extends Modal {
 			await appendToLogFile(this.app, logMsg);
 		};
 		reader.readAsDataURL(selectedFile);
-	}
-
-	static triggerDesktopUpload(app: App, cameraSettings: CameraPluginSettings) {
-		if (Platform.isIosApp) return;
-
-		const filePicker = document.createElement("input");
-		filePicker.type = "file";
-		filePicker.accept = "image/*";
-		filePicker.style.display = "none";
-
-		filePicker.onchange = async () => {
-			if (!filePicker.files?.length) return;
-			const selectedFile = filePicker.files[0];
-			const modal = new CameraModal(app, cameraSettings);
-			await modal.handleUploadFile(selectedFile);
-			document.body.removeChild(filePicker);
-		};
-
-		document.body.appendChild(filePicker);
-		filePicker.click();
 	}
 }
 

@@ -1,6 +1,6 @@
 {
 	"id": "jzs_scan",
-	"name": "JZS Doc Scan",
+	"name": "JZS Auto Page Extract",
 	"version": "0.1.5",
 	"minAppVersion": "1.4.0",
 	"description": "JZS Camera plugin for Obsidian",

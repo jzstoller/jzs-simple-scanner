@@ -6,19 +6,13 @@ export default class ObsidianCamera extends Plugin {
   settings: CameraPluginSettings;
   async onload() {
     await this.loadSettings();
-    this.addRibbonIcon("camera", "JZS Doc Scan", (evt: MouseEvent) => {
-      if (Platform.isIosApp) {
-        CameraModal.triggerIosScan(this.app, this.settings);
-      } else {
+    if (!Platform.isIosApp) {
+      this.addRibbonIcon("camera", "JZS Doc Scan", (evt: MouseEvent) => {
         new CameraModal(this.app, this.settings).open();
-      }
-    });
-    this.addRibbonIcon("camera", "JZS Doc Upload", (evt: MouseEvent) => {
-      if (Platform.isIosApp) {
-        CameraModal.triggerIosUpload(this.app, this.settings);
-      } else {
-        CameraModal.triggerDesktopUpload(this.app, this.settings);
-      }
+      });
+    }
+    this.addRibbonIcon("camera", "JZS Auto Page Extract", (evt: MouseEvent) => {
+      CameraModal.triggerIosUpload(this.app, this.settings);
     });
     this.addSettingTab(new CameraSettingsTab(this.app, this));
 
@@ -37,14 +31,10 @@ export default class ObsidianCamera extends Plugin {
 
     this.addCommand({
       id: "jzs-doc-upload",
-      name: "JZS Doc Upload",
+      name: "JZS Auto Page Extract",
       icon: "camera",
       callback: () => {
-        if (Platform.isIosApp) {
-          CameraModal.triggerIosUpload(this.app, this.settings);
-        } else {
-          CameraModal.triggerDesktopUpload(this.app, this.settings);
-        }
+        CameraModal.triggerIosUpload(this.app, this.settings);
       }
     });
   }
