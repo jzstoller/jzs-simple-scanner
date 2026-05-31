@@ -6,13 +6,25 @@ export default class ObsidianCamera extends Plugin {
   settings: CameraPluginSettings;
   async onload() {
     await this.loadSettings();
-    if (!Platform.isIosApp) {
-      this.addRibbonIcon("camera", "JZS Doc Scan", (evt: MouseEvent) => {
-        new CameraModal(this.app, this.settings).open();
-      });
-    }
     this.addRibbonIcon("camera", "JZS Auto Page Extract", (evt: MouseEvent) => {
-      CameraModal.triggerIosUpload(this.app, this.settings);
+      if (Platform.isIosApp) {
+        CameraModal.triggerIosUpload(this.app, this.settings);
+      } else {
+        // Desktop: open system file picker and process file
+        const filePicker = document.createElement("input");
+        filePicker.type = "file";
+        filePicker.accept = "image/*";
+        filePicker.style.display = "none";
+        filePicker.onchange = async () => {
+          if (!filePicker.files?.length) return;
+          const selectedFile = filePicker.files[0];
+          const modal = new CameraModal(this.app, this.settings);
+          await modal.handleUploadFile(selectedFile);
+          document.body.removeChild(filePicker);
+        };
+        document.body.appendChild(filePicker);
+        filePicker.click();
+      }
     });
     this.addSettingTab(new CameraSettingsTab(this.app, this));
 
