@@ -1,7 +1,7 @@
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { detectDocument, saveDebugOverlay, saveWarped } from "./detectDocument";
+import { detectDocument, saveDebugOverlay, saveWarped } from "../src/core/detectDocument";
 
 const INPUT = process.argv[2] ?? "test-images/doc.jpg";
 const OUTPUT_DIR = "output";

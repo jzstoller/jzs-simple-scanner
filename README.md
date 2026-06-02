@@ -38,8 +38,8 @@ Or
 
 <!-- ![demo.gif](https://raw.githubusercontent.com/aldrinjenson/obsidian-camera/master/demo.gif) -->
 
-![demo.gif](demo.gif)
+![demo.gif](./assets/demo/demo.gif)
 
-<!-- ![modal screenshot](./ss1.png) -->
+<!-- ![modal screenshot](./assets/demo/ss1.png) -->
 
-<!-- ![modal screenshot](https://raw.githubusercontent.com/aldrinjenson/obsidian-camera/master/ss2.png) -->
+<!-- ![modal screenshot](./assets/demo/ss2.png) -->

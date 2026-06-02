@@ -1,6 +1,6 @@
 import { App, MarkdownView, Modal, Notice, Platform, TFile } from "obsidian";
-import { createDebugOverlay, detectDocument } from "../scripts/detectDocument-browser";
-import { loadOpenCV } from "./opencv-loader";
+import { createDebugOverlay, detectDocument } from "./core/DocumentDetector";
+import { loadOpenCV } from "./core/opencv-loader";
 import { CameraPluginSettings } from "./SettingsTab";
 
 async function appendToLogFile(app: App, message: string) {

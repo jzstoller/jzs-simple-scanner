@@ -6,9 +6,9 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "node node_modules/typescript/bin/tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"version": "node scripts/version-bump.mjs && git add manifest.json versions.json",
 		"detect": "tsx scripts/runDetect.ts",
-		"copy-plugin": "mkdir -p \"/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs_scan\" && cp manifest.json styles.css node_modules/@techstark/opencv-js/dist/opencv.js \"/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs_scan/\"",
+		"copy-plugin": "mkdir -p \"/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs_scan\" && cp manifest.json styles.css assets/opencv/opencv.js \"/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs_scan/\"",
 		"build-and-copy": "npm run build && npm run copy-plugin"
 	},
 	"keywords": [],
