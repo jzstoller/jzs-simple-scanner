@@ -2,6 +2,20 @@ import { App, Notice, Platform } from "obsidian";
 
 type Logger = (msg: string) => void;
 
+type TimerHandle = ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>;
+
+type OpenCVLoaderState = {
+  script: HTMLScriptElement | null;
+  sourceTimeout: ReturnType<typeof setTimeout> | null;
+  overallTimeout: ReturnType<typeof setTimeout> | null;
+  cvCheckInterval: ReturnType<typeof setInterval> | null;
+  checkCvInterval: ReturnType<typeof setInterval> | null;
+  finished: boolean;
+  aborted: boolean;
+  previousModuleValue: any;
+  moduleObject: any;
+};
+
 // CDN URLs - try multiple sources on desktop, single source on iOS
 // Note: npm CDN versions sometimes fail to load in Electron, so we fallback to docs.opencv.org
 const CDN_URLS_DESKTOP = [
@@ -12,8 +26,57 @@ const CDN_URLS_DESKTOP = [
 
 const CDN_URL_IOS = 'https://docs.opencv.org/4.10.0/opencv.js';
 
+let activeLoader: OpenCVLoaderState | null = null;
+
+function deleteOpenCVGlobals() {
+  const existingScript = document.getElementById('opencvjs');
+  if (existingScript) {
+    existingScript.remove();
+  }
+  if ((window as any).cv) {
+    delete (window as any).cv;
+  }
+}
+
+function clearLoaderTimers(state: OpenCVLoaderState) {
+  if (state.sourceTimeout) clearTimeout(state.sourceTimeout);
+  if (state.overallTimeout) clearTimeout(state.overallTimeout);
+  if (state.cvCheckInterval) clearInterval(state.cvCheckInterval);
+  if (state.checkCvInterval) clearInterval(state.checkCvInterval);
+}
+
+function abortActiveLoader() {
+  if (!activeLoader) return;
+
+  const state = activeLoader;
+  activeLoader = null;
+  state.aborted = true;
+  state.finished = true;
+  clearLoaderTimers(state);
+
+  const moduleObject = (window as any).Module;
+  if (moduleObject === state.moduleObject) {
+    if (typeof state.previousModuleValue === "undefined") {
+      delete (window as any).Module;
+    } else {
+      (window as any).Module = state.previousModuleValue;
+    }
+  }
+
+  if (state.script) {
+    state.script.remove();
+  }
+}
+
+export function cleanupOpenCVLoader() {
+  abortActiveLoader();
+  deleteOpenCVGlobals();
+}
+
 export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): Promise<void> {
   return new Promise((resolve, reject) => {
+    abortActiveLoader();
+
     const log = (msg: string) => {
       new Notice(msg);
       if (logger) logger(msg);
@@ -27,19 +90,54 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
     }
 
     // Remove any stale script
-    const stale = document.getElementById('opencvjs');
-    if (stale) stale.remove();
+    deleteOpenCVGlobals();
 
     // Choose CDN list based on platform
     const cdnUrls = Platform.isIosApp ? [CDN_URL_IOS] : CDN_URLS_DESKTOP;
 
-    let finished = false;
     let cdnIndex = 0;
+    const state: OpenCVLoaderState = {
+      script: null,
+      sourceTimeout: null,
+      overallTimeout: null,
+      cvCheckInterval: null,
+      checkCvInterval: null,
+      finished: false,
+      aborted: false,
+      previousModuleValue: undefined,
+      moduleObject: null,
+    };
+
+    activeLoader = state;
+
+    const finalize = () => {
+      clearLoaderTimers(state);
+      if (state.script) {
+        state.script.remove();
+        state.script = null;
+      }
+      if ((window as any).Module === state.moduleObject) {
+        if (typeof state.previousModuleValue === "undefined") {
+          delete (window as any).Module;
+        } else {
+          (window as any).Module = state.previousModuleValue;
+        }
+      }
+      if (activeLoader === state) {
+        activeLoader = null;
+      }
+    };
+
+    const complete = () => {
+      if (state.finished) return;
+      state.finished = true;
+      finalize();
+    };
 
     const loadFromUrl = () => {
-      if (finished || cdnIndex >= cdnUrls.length) {
-        if (!finished) {
-          finished = true;
+      if (state.aborted || state.finished || cdnIndex >= cdnUrls.length) {
+        if (!state.finished && !state.aborted) {
+          state.finished = true;
           reject(new Error('OpenCV.js failed to load from all sources'));
         }
         return;
@@ -48,8 +146,8 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
       const url = cdnUrls[cdnIndex];
       cdnIndex++;
 
-      const timeout = setTimeout(() => {
-        if (finished) return;
+      state.sourceTimeout = setTimeout(() => {
+        if (state.finished || state.aborted) return;
         loadFromUrl();
       }, 20000);  // 20 second timeout per CDN source
 
@@ -58,40 +156,31 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
       script.id = 'opencvjs';
       script.src = url;
       script.async = true;
+      state.script = script;
 
       // Setup Module for WASM loading - queue callbacks
-      (window as any).Module = (window as any).Module || {};
-      const originalCallback = (window as any).Module.onRuntimeInitialized;
-      (window as any).Module.onRuntimeInitialized = () => {
-        // Call original if it exists
-        if (originalCallback && typeof originalCallback === 'function') {
-          originalCallback();
-        }
+      state.previousModuleValue = (window as any).Module;
+      state.moduleObject = {
+        ...(state.previousModuleValue || {}),
+      };
+      state.moduleObject.onRuntimeInitialized = () => {
+        if (state.aborted || state.finished) return;
         // Check if ready
-        if (!finished && isReady()) {
-          clearTimeout(timeout);
-          finished = true;
+        if (!state.finished && isReady()) {
           log('✓ OpenCV.js ready');
+          complete();
           resolve();
         }
       };
+      (window as any).Module = state.moduleObject;
 
       script.onload = () => {
         // Script loaded, now wait for cv.Mat or Module callback to be ready
       };
 
-      let cvCheckInterval: any = null;
-      let checkCvInterval: any = null;
-
-      const cleanup = () => {
-        if (cvCheckInterval) clearInterval(cvCheckInterval);
-        if (checkCvInterval) clearInterval(checkCvInterval);
-      };
-
-      cvCheckInterval = setInterval(() => {
-        if (finished) {
-          cleanup();
-          clearTimeout(timeout);
+      state.cvCheckInterval = setInterval(() => {
+        if (state.finished || state.aborted) {
+          clearLoaderTimers(state);
           return;
         }
         const cv = (window as any).cv;
@@ -100,25 +189,28 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
           (window as any).cv = mod;
         }
         if (cv && cv.Mat) {
-          cleanup();
-          clearTimeout(timeout);
-          if (!finished) {
-            finished = true;
+          clearLoaderTimers(state);
+          if (!state.finished) {
+            state.finished = true;
             resolve();
+            finalize();
           }
         }
       }, 1000);
 
-      checkCvInterval = setInterval(() => {
-        if (finished) {
-          cleanup();
+      state.checkCvInterval = setInterval(() => {
+        if (state.finished || state.aborted) {
+          clearLoaderTimers(state);
         }
       }, 100);
 
       script.onerror = () => {
-        clearTimeout(timeout);
-        if (finished) return;
-        script.remove();
+        if (state.finished || state.aborted) return;
+        clearLoaderTimers(state);
+        if (state.script) {
+          state.script.remove();
+          state.script = null;
+        }
         loadFromUrl();
       };
 
@@ -128,9 +220,10 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
     loadFromUrl();
 
     // Overall timeout
-    setTimeout(() => {
-      if (!finished) {
-        finished = true;
+    state.overallTimeout = setTimeout(() => {
+      if (!state.finished && !state.aborted) {
+        state.finished = true;
+        finalize();
         reject(new Error('OpenCV.js load timeout after ' + (timeoutMs / 1000) + 's'));
       }
     }, timeoutMs);

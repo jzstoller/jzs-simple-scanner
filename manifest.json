@@ -1,7 +1,7 @@
 {
 	"id": "jzs_scan",
 	"name": "JZS Auto Page Extract",
-	"version": "0.1.6",
+	"version": "0.1.7",
 	"minAppVersion": "1.4.0",
 	"description": "JZS Camera plugin for Obsidian",
 	"author": "Extski",

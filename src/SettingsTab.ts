@@ -1,5 +1,4 @@
-import ObsidianCamera from "main";
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
 
 export interface CameraPluginSettings {
 	chosenFolderPath: string;
@@ -11,11 +10,16 @@ export const DEFAULT_SETTINGS: CameraPluginSettings = {
 	showBoundingBox: false,
 };
 
-export default class CameraSettingsTab extends PluginSettingTab {
-	plugin: ObsidianCamera;
+export interface CameraPluginHost {
+	settings: CameraPluginSettings;
+	saveSettings(): Promise<void>;
+}
 
-	constructor(app: App, plugin: ObsidianCamera) {
-		super(app, plugin);
+export default class CameraSettingsTab extends PluginSettingTab {
+	plugin: CameraPluginHost;
+
+	constructor(app: App, plugin: CameraPluginHost) {
+		super(app, plugin as unknown as Plugin);
 		this.plugin = plugin;
 	}
 

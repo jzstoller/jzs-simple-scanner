@@ -1,17 +1,14 @@
-import { Platform, Plugin } from "obsidian";
-import CameraModal from "./Modal";
+import { Plugin } from "obsidian";
 import CameraSettingsTab, { CameraPluginSettings, DEFAULT_SETTINGS } from "./SettingsTab";
+import { cleanupOpenCVLoader } from "./core/opencv-loader";
+import { triggerUpload } from "./core/filePicker";
 
 export default class ObsidianCamera extends Plugin {
   settings: CameraPluginSettings;
   async onload() {
     await this.loadSettings();
     this.addRibbonIcon("camera", "JZS Auto Page Extract", () => {
-      if (Platform.isIosApp) {
-        CameraModal.triggerIosUpload(this.app, this.settings);
-      } else {
-        CameraModal.triggerDesktopUpload(this.app, this.settings);
-      }
+      triggerUpload(this.app, this.settings);
     });
     this.addSettingTab(new CameraSettingsTab(this.app, this));
 
@@ -20,11 +17,7 @@ export default class ObsidianCamera extends Plugin {
       name: "Open camera modal / File Picker",
       icon: "camera",
       callback: () => {
-        if (Platform.isIosApp) {
-          CameraModal.triggerIosUpload(this.app, this.settings);
-        } else {
-          CameraModal.triggerDesktopUpload(this.app, this.settings);
-        }
+        triggerUpload(this.app, this.settings);
       },
     });
 
@@ -33,13 +26,13 @@ export default class ObsidianCamera extends Plugin {
       name: "JZS Auto Page Extract",
       icon: "camera",
       callback: () => {
-        if (Platform.isIosApp) {
-          CameraModal.triggerIosUpload(this.app, this.settings);
-        } else {
-          CameraModal.triggerDesktopUpload(this.app, this.settings);
-        }
+        triggerUpload(this.app, this.settings);
       }
     });
+  }
+
+  onunload() {
+    cleanupOpenCVLoader();
   }
 
 
