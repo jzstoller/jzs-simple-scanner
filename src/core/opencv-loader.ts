@@ -35,7 +35,6 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
 
     let finished = false;
     let cdnIndex = 0;
-    let statusCheck: any = null;
 
     const loadFromUrl = () => {
       if (finished || cdnIndex >= cdnUrls.length) {
@@ -132,9 +131,8 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
     setTimeout(() => {
       if (!finished) {
         finished = true;
-        if (statusCheck) clearInterval(statusCheck);
         reject(new Error('OpenCV.js load timeout after ' + (timeoutMs / 1000) + 's'));
       }
-    }, 180000);  // 3 minutes overall for all attempts
+    }, timeoutMs);
   });
 }

@@ -6,24 +6,11 @@ export default class ObsidianCamera extends Plugin {
   settings: CameraPluginSettings;
   async onload() {
     await this.loadSettings();
-    this.addRibbonIcon("camera", "JZS Auto Page Extract", (evt: MouseEvent) => {
+    this.addRibbonIcon("camera", "JZS Auto Page Extract", () => {
       if (Platform.isIosApp) {
         CameraModal.triggerIosUpload(this.app, this.settings);
       } else {
-        // Desktop: open system file picker and process file
-        const filePicker = document.createElement("input");
-        filePicker.type = "file";
-        filePicker.accept = "image/*";
-        filePicker.style.display = "none";
-        filePicker.onchange = async () => {
-          if (!filePicker.files?.length) return;
-          const selectedFile = filePicker.files[0];
-          const modal = new CameraModal(this.app, this.settings);
-          await modal.handleUploadFile(selectedFile);
-          document.body.removeChild(filePicker);
-        };
-        document.body.appendChild(filePicker);
-        filePicker.click();
+        CameraModal.triggerDesktopUpload(this.app, this.settings);
       }
     });
     this.addSettingTab(new CameraSettingsTab(this.app, this));
@@ -36,7 +23,7 @@ export default class ObsidianCamera extends Plugin {
         if (Platform.isIosApp) {
           CameraModal.triggerIosUpload(this.app, this.settings);
         } else {
-          new CameraModal(this.app, this.settings).open();
+          CameraModal.triggerDesktopUpload(this.app, this.settings);
         }
       },
     });
@@ -46,7 +33,11 @@ export default class ObsidianCamera extends Plugin {
       name: "JZS Auto Page Extract",
       icon: "camera",
       callback: () => {
-        CameraModal.triggerIosUpload(this.app, this.settings);
+        if (Platform.isIosApp) {
+          CameraModal.triggerIosUpload(this.app, this.settings);
+        } else {
+          CameraModal.triggerDesktopUpload(this.app, this.settings);
+        }
       }
     });
   }

@@ -20,6 +20,7 @@ esbuild.build({
 	external: [
 		'obsidian',
 		'electron',
+		'@techstark/opencv-js',
 		'@codemirror/autocomplete',
 		'@codemirror/closebrackets',
 		'@codemirror/collab',

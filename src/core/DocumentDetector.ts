@@ -1,10 +1,11 @@
 // detectDocument-browser.ts
 // OpenCV.js (WebAssembly) document detection for browser/Obsidian plugin
 
-export interface Corner {
-  x: number;
-  y: number;
-}
+// cv is loaded at runtime via CDN (see opencv-loader.ts).
+// It is read from window.cv at call-time inside each function to avoid relying on
+// esbuild's free-variable resolution, which differs between window and global in Electron.
+
+import { Corner, buildTransform, orderPoints } from "./documentGeometry";
 
 export interface DetectDebug {
   srcRows: number;
@@ -26,11 +27,13 @@ export interface DetectResult {
 }
 
 export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement, logger?: (msg: string) => void): DetectResult {
+  // Bind cv from window at call-time; loadOpenCV() must have resolved before this is called.
+  const cv = (window as any).cv as typeof import("@techstark/opencv-js");
   const log = (msg: string) => {
     if (logger) logger(msg);
     console.log('[detectDocument] ' + msg);
   };
-  
+
   try {
     // Pre-draw to an explicit canvas to work around cv.imread issues with
     // HTMLImageElement in WKWebView / Electron (image not in DOM, etc.)
@@ -194,7 +197,7 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
       })) as [Corner, Corner, Corner, Corner];
     }
 
-    const { M, w, h } = buildTransform(warpCorners);
+    const { M, w, h } = buildTransform(warpCorners, cv);
     let dst = new cv.Mat();
     cv.warpPerspective(warpSrc, dst, M, new cv.Size(Math.round(w), Math.round(h)));
     M.delete();
@@ -330,38 +333,4 @@ export function createDebugOverlay(
   });
 
   return canvas;
-}
-
-function orderPoints(pts: Corner[]): Corner[] {
-  const sorted = [...pts].sort((a, b) => (a.x + a.y) - (b.x + b.y));
-  const tl = sorted[0];
-  const br = sorted[3];
-  const [bl, tr] = sorted.slice(1, 3).sort((a, b) => a.x - b.x);
-  return [tl, tr, br, bl];
-}
-
-function buildTransform(pts: Corner[]) {
-  const [tl, tr, br, bl] = pts;
-  const w = Math.max(dist(tl, tr), dist(bl, br));
-  const h = Math.max(dist(tl, bl), dist(tr, br));
-  const srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    tl.x, tl.y,
-    tr.x, tr.y,
-    br.x, br.y,
-    bl.x, bl.y,
-  ]);
-  const dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    0,     0,
-    w - 1, 0,
-    w - 1, h - 1,
-    0,     h - 1,
-  ]);
-  const M = cv.getPerspectiveTransform(srcMat, dstMat);
-  srcMat.delete();
-  dstMat.delete();
-  return { M, w, h };
-}
-
-function dist(a: Corner, b: Corner): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
 }

@@ -29,7 +29,7 @@ export default class CameraSettingsTab extends PluginSettingTab {
 			.setDesc("Folder where the scanned images should be saved")
 			.addText((text) =>
 				text
-					.setPlaceholder("Enter your secret")
+					.setPlaceholder("e.g. attachments/snaps")
 					.setValue(this.plugin.settings.chosenFolderPath)
 					.onChange(async (value) => {
 						this.plugin.settings.chosenFolderPath = value;
