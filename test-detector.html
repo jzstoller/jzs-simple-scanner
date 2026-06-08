@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Detector Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .controls {
+            margin-bottom: 30px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        button {
+            padding: 10px 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        .status {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .result-panel {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .result-panel h3 {
+            background: #f0f0f0;
+            padding: 10px;
+            font-size: 14px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        canvas, img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        .corners {
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .corner-point {
+            padding: 5px;
+            margin: 5px 0;
+            background: #f9f9f9;
+            border-left: 3px solid #2563eb;
+        }
+        input[type="range"] {
+            pointer-events: auto;
+            cursor: pointer;
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #d3d3d3;
+            border-radius: 5px;
+            outline: none;
+            accent-color: #2563eb;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            pointer-events: auto;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-webkit-slider-thumb:active {
+            transform: scale(1.2);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            border: 2px solid white;
+            pointer-events: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-moz-range-thumb:active {
+            transform: scale(1.2);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        input[type="range"]::-moz-range-track {
+            background: transparent;
+            border: none;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #d3d3d3;
+            height: 8px;
+            border-radius: 5px;
+        }
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 Document Detection Test</h1>
+
+        <div class="controls">
+            <button onclick="document.getElementById('fileInput').click()">📁 Choose Image</button>
+            <button onclick="testWithURL()">🔗 Load from URL</button>
+        </div>
+
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+
+        <div class="status" id="status">Ready to load an image...</div>
+
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        (() => {
+            const urls = [
+                'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0/dist/opencv.js',
+                'https://unpkg.com/@techstark/opencv-js@4.12.0/dist/opencv.js',
+                'https://docs.opencv.org/4.10.0/opencv.js',
+            ];
+
+            const loadFromUrl = (index) => {
+                if (index >= urls.length) {
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = urls[index];
+                script.async = true;
+
+                const timeout = setTimeout(() => {
+                    cleanup();
+                    loadFromUrl(index + 1);
+                }, 20000);
+
+                const poll = setInterval(() => {
+                    const cv = window.cv;
+                    if (cv && cv.Mat) {
+                        cleanup();
+                    }
+                }, 100);
+
+                function cleanup() {
+                    clearTimeout(timeout);
+                    clearInterval(poll);
+                }
+
+                script.onerror = () => {
+                    cleanup();
+                    script.remove();
+                    loadFromUrl(index + 1);
+                };
+
+                document.body.appendChild(script);
+            };
+
+            window.addEventListener('load', () => {
+                if (window.cv && window.cv.Mat) {
+                    return;
+                }
+                loadFromUrl(0);
+            });
+        })();
+    </script>
+    <script>
+        // Import types
+        class Corner {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+            }
+        }
+
+        // Utility functions
+        function dist(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function ptsFromMat(mat) {
+            const pts = [];
+            for (let i = 0; i < 4; i++) {
+                pts.push(new Corner(mat.intPtr(i, 0)[0], mat.intPtr(i, 0)[1]));
+            }
+            return pts;
+        }
+
+        function isValidQuad(pts) {
+            // Check for near-duplicate points (degenerate shapes)
+            for (let i = 0; i < pts.length; i++) {
+                for (let j = i + 1; j < pts.length; j++) {
+                    if (dist(pts[i], pts[j]) < 10) return false;
+                }
+            }
+
+            const ordered = orderPoints(pts);
+            const [tl, tr, br, bl] = ordered;
+
+            // Get all 4 side lengths
+            const topDist = dist(tl, tr);
+            const bottomDist = dist(bl, br);
+            const leftDist = dist(tl, bl);
+            const rightDist = dist(tr, br);
+
+            // Check aspect ratio - documents are typically 0.5 to 2.5 (portrait to landscape)
+            // Check aspect ratio - documents are typically 0.3 to 3.0 (portrait to landscape)
+            const widthAvg = (topDist + bottomDist) / 2;
+            const heightAvg = (leftDist + rightDist) / 2;
+            const aspectRatio = widthAvg / heightAvg;
+
+            if (aspectRatio < 0.3 || aspectRatio > 3.0) return false;
+
+            // Check that opposite sides are similar (reject trapezoids)
+            // Top and bottom should be similar length
+            const topBottomRatio = Math.max(topDist, bottomDist) / Math.min(topDist, bottomDist);
+            if (topBottomRatio > 1.5) return false;  // more strict than before
+
+            // Left and right should be similar length
+            const leftRightRatio = Math.max(leftDist, rightDist) / Math.min(leftDist, rightDist);
+            if (leftRightRatio > 1.5) return false;
+
+            // Check that all sides have reasonable length (not tiny)
+            const minSideLength = Math.min(topDist, bottomDist, leftDist, rightDist);
+            if (minSideLength < 20) return false;
+
+            return true;
+        }
+
+        function orderPoints(pts) {
+            const sorted = [...pts].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+            const tl = sorted[0];
+            const br = sorted[3];
+            const [bl, tr] = sorted.slice(1, 3).sort((a, b) => a.x - b.x);
+            return [tl, tr, br, bl];
+        }
+
+        function buildTransform(pts) {
+            const [tl, tr, br, bl] = pts;
+            const w = Math.max(dist(tl, tr), dist(bl, br));
+            const h = Math.max(dist(tl, bl), dist(tr, br));
+            const srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                tl.x, tl.y,
+                tr.x, tr.y,
+                br.x, br.y,
+                bl.x, bl.y,
+            ]);
+            const dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                0,     0,
+                w - 1, 0,
+                w - 1, h - 1,
+                0,     h - 1,
+            ]);
+            const M = cv.getPerspectiveTransform(srcMat, dstMat);
+            srcMat.delete();
+            dstMat.delete();
+            return { M, w, h };
+        }
+
+function detectDocument(imageSource) {
+            // Pre-draw to an explicit canvas to work around cv.imread issues
+            const naturalW = imageSource.naturalWidth || imageSource.width;
+            const naturalH = imageSource.naturalHeight || imageSource.height;
+            const srcCanvas = document.createElement('canvas');
+            srcCanvas.width = naturalW;
+            srcCanvas.height = naturalH;
+            const srcCtx = srcCanvas.getContext('2d');
+            srcCtx.drawImage(imageSource, 0, 0);
+
+            const src = cv.imread(srcCanvas);
+
+            // Stage 1: Preprocessing
+            // Resize to ~1200px width for speed
+            let resized = new cv.Mat();
+            const scale = Math.min(1.0, 1200 / src.cols);
+            cv.resize(src, resized, new cv.Size(0, 0), scale, scale);
+
+            // Convert RGBA -> RGB -> HSV for color analysis
+            const rgb = new cv.Mat();
+            cv.cvtColor(resized, rgb, cv.COLOR_RGBA2RGB);
+            const hsv = new cv.Mat();
+            cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+            rgb.delete();
+
+            // Extract saturation and value channels for paper detection
+            const hsvChannels = new cv.MatVector();
+            cv.split(hsv, hsvChannels);
+            const saturation = hsvChannels.get(1);  // S channel
+            const value      = hsvChannels.get(2);  // V channel
+            hsvChannels.delete();                   // safe to delete now, we have both
+
+            const satMask = new cv.Mat();
+            cv.threshold(saturation, satMask, 100, 255, cv.THRESH_BINARY_INV); // low sat = paper
+
+            const valMask = new cv.Mat();
+            cv.threshold(value, valMask, 120, 255, cv.THRESH_BINARY);          // bright = paper
+
+            // Must be BOTH low saturation AND bright → strong paper signal
+            cv.bitwise_and(satMask, valMask, satMask);
+            valMask.delete();
+            value.delete();
+
+            // Convert to grayscale
+            let gray = new cv.Mat();
+            cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
+
+            // Bilateral filter (suppress texture, preserve edges)
+            let smooth = new cv.Mat();
+            cv.bilateralFilter(gray, smooth, 9, 75, 75, cv.BORDER_DEFAULT);
+
+            // Stage 2: Create Multiple Detection Maps
+            // A. Edge Map
+            let edges = new cv.Mat();
+            cv.Canny(smooth, edges, 50, 150);
+
+            // Dilate to thicken edges
+            const kernelRect = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+            cv.dilate(edges, edges, kernelRect);
+
+            // B. Adaptive Brightness Map
+            let thresh = new cv.Mat();
+            cv.adaptiveThreshold(smooth, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 15);
+
+            // C. Morphological Cleanup
+            cv.morphologyEx(thresh, thresh, cv.MORPH_OPEN, kernelRect);
+            cv.morphologyEx(thresh, thresh, cv.MORPH_CLOSE, kernelRect);
+
+            // Stage 3: Combine Signals (edge AND brightness)
+            let combined = new cv.Mat();
+            cv.bitwise_and(thresh, edges, combined);
+
+            // Apply saturation mask to suppress carpet interference
+            cv.bitwise_and(combined, satMask, combined);
+
+            // Stage 4: Find Contours
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            // Use RETR_LIST to get all contours
+            cv.findContours(combined, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+            // Stage 5-6: Find largest contour and apply hull + approximation
+            let bestCnt = null;
+            let maxArea = 0;
+
+            for (let i = 0; i < contours.size(); i++) {
+                const cnt = contours.get(i);
+                const area = cv.contourArea(cnt);
+                if (area > maxArea) {
+                    maxArea = area;
+                    if (bestCnt) bestCnt.delete();
+                    bestCnt = cnt;
+                } else {
+                    cnt.delete();
+                }
+            }
+
+            // Compute convex hull to smooth out squiggly edges
+            let approx = null;
+            if (bestCnt) {
+                const hull = new cv.Mat();
+                const tempApprox = new cv.Mat();
+                cv.convexHull(bestCnt, hull);
+                const peri = cv.arcLength(hull, true);
+                cv.approxPolyDP(hull, tempApprox, 0.04 * peri, true);
+
+                // Validate that we have exactly 4 corners and it's a valid quad
+                if (tempApprox.rows === 4) {
+                    const pts = ptsFromMat(tempApprox);
+                    if (isValidQuad(pts)) {
+                        approx = tempApprox;
+                    } else {
+                        tempApprox.delete();
+                    }
+                } else {
+                    tempApprox.delete();
+                }
+
+                hull.delete();
+                bestCnt.delete();
+            }
+
+            // === CAPTURE STAGE OUTPUTS FOR VISUALIZATION ===
+
+            // Stage 0.5: HSV Saturation (already extracted earlier, just visualize it)
+            const stage05Canvas = document.createElement('canvas');
+            stage05Canvas.width = resized.cols;
+            stage05Canvas.height = resized.rows;
+            cv.imshow(stage05Canvas, saturation);
+
+            // Stage 0.7 visualization canvas (satMask already created earlier for signal filtering)
+            const stage07Canvas = document.createElement('canvas');
+            stage07Canvas.width = resized.cols;
+            stage07Canvas.height = resized.rows;
+            cv.imshow(stage07Canvas, satMask);
+
+            // Stage 1: Preprocessing (bilateral filtered)
+            const stage1Canvas = document.createElement('canvas');
+            stage1Canvas.width = resized.cols;
+            stage1Canvas.height = resized.rows;
+            cv.imshow(stage1Canvas, smooth);
+
+            // Stage 2: Edge Map
+            const stage2Canvas = document.createElement('canvas');
+            stage2Canvas.width = resized.cols;
+            stage2Canvas.height = resized.rows;
+            cv.imshow(stage2Canvas, edges);
+
+            // Stage 3: Brightness Map
+            const stage3Canvas = document.createElement('canvas');
+            stage3Canvas.width = resized.cols;
+            stage3Canvas.height = resized.rows;
+            cv.imshow(stage3Canvas, thresh);
+
+            // Stage 5: Combined Signal
+            const stage5Canvas = document.createElement('canvas');
+            stage5Canvas.width = resized.cols;
+            stage5Canvas.height = resized.rows;
+            cv.imshow(stage5Canvas, combined);
+
+            // Stage 6: Contours visualization
+            const stage6Canvas = document.createElement('canvas');
+            stage6Canvas.width = resized.cols;
+            stage6Canvas.height = resized.rows;
+            const contoursViz = cv.Mat.zeros(resized.rows, resized.cols, cv.CV_8UC3);
+            for (let i = 0; i < contours.size(); i++) {
+                const color = (approx && approx.rows > 0 && i === 0)
+                    ? new cv.Scalar(0, 255, 0, 255)
+                    : new cv.Scalar(200, 200, 200, 255);
+                cv.drawContours(contoursViz, contours, i, color, 2);
+            }
+            cv.imshow(stage6Canvas, contoursViz);
+            contoursViz.delete();
+
+            // Stage 6b: All contours on black background
+            const stage6bCanvas = document.createElement('canvas');
+            stage6bCanvas.width = resized.cols;
+            stage6bCanvas.height = resized.rows;
+            const debugMat = cv.Mat.zeros(resized.rows, resized.cols, cv.CV_8UC3);
+            cv.drawContours(debugMat, contours, -1, new cv.Scalar(0, 255, 0, 255), 2);
+            cv.imshow(stage6bCanvas, debugMat);
+            debugMat.delete();
+
+            // Stage 7: Best candidate highlighted with corners
+            const stage7Canvas = document.createElement('canvas');
+            stage7Canvas.width = resized.cols;
+            stage7Canvas.height = resized.rows;
+            const stage7Mat = cv.Mat.zeros(resized.rows, resized.cols, cv.CV_8UC3);
+            cv.cvtColor(combined, stage7Mat, cv.COLOR_GRAY2BGR);
+            if (approx && approx.rows > 0) {
+                const pts = [];
+                for (let i = 0; i < approx.rows; i++) {
+                    pts.push({
+                        x: approx.intPtr(i, 0)[0],
+                        y: approx.intPtr(i, 0)[1]
+                    });
+                }
+                const ptsMat = cv.matFromArray(pts.length, 1, cv.CV_32SC2, pts.flatMap(p => [p.x, p.y]));
+                const ptsVector = new cv.MatVector();
+                ptsVector.push_back(ptsMat);
+                cv.polylines(stage7Mat, ptsVector, true, new cv.Scalar(0, 255, 0, 255), 3);
+                ptsVector.delete();
+                ptsMat.delete();
+                for (const pt of pts) {
+                    cv.circle(stage7Mat, new cv.Point(pt.x, pt.y), 5, new cv.Scalar(0, 165, 255, 255), -1);
+                }
+            }
+            cv.imshow(stage7Canvas, stage7Mat);
+            stage7Mat.delete();
+
+            // iOS warp logic with MAX_WARP_DIM cap
+            const MAX_WARP_DIM = 2000;
+            const warpScale = Math.min(MAX_WARP_DIM / src.cols, MAX_WARP_DIM / src.rows, 1.0);
+
+            let corners = [
+                { x: 0, y: 0 },
+                { x: src.cols - 1, y: 0 },
+                { x: src.cols - 1, y: src.rows - 1 },
+                { x: 0, y: src.rows - 1 }
+            ];
+
+            let warpedCanvas = document.createElement('canvas');
+            warpedCanvas.width = src.cols;
+            warpedCanvas.height = src.rows;
+
+            if (approx && approx.rows > 0) {
+                // Extract corner points from approx
+                const pts = [];
+                for (let i = 0; i < approx.rows; i++) {
+                    pts.push({
+                        x: approx.intPtr(i, 0)[0],
+                        y: approx.intPtr(i, 0)[1]
+                    });
+                }
+                approx.delete();
+
+                // Scale corners back to original full-resolution coordinates
+                const inv = 1 / scale;
+                const scaledPts = pts.map(p => ({ x: Math.round(p.x * inv), y: Math.round(p.y * inv) }));
+                corners = orderPoints(scaledPts);
+
+                // Down-scale source for warp if needed, then scale corners accordingly
+                let warpSrc = src;
+                let warpCorners = corners;
+                if (warpScale < 1.0) {
+                    warpSrc = new cv.Mat();
+                    cv.resize(src, warpSrc, new cv.Size(
+                        Math.round(src.cols * warpScale),
+                        Math.round(src.rows * warpScale)
+                    ));
+                    warpCorners = corners.map(p => ({
+                        x: Math.round(p.x * warpScale),
+                        y: Math.round(p.y * warpScale),
+                    }));
+                }
+
+                const { M, w, h } = buildTransform(warpCorners);
+                let dst = new cv.Mat();
+                cv.warpPerspective(warpSrc, dst, M, new cv.Size(Math.round(w), Math.round(h)));
+                M.delete();
+                if (warpSrc !== src) warpSrc.delete();
+
+                warpedCanvas.width = Math.round(w);
+                warpedCanvas.height = Math.round(h);
+                cv.imshow(warpedCanvas, dst);
+                dst.delete();
+            } else {
+                // Fallback: no document found, return the full image as-is
+                if (approx) approx.delete();
+
+                let fallbackSrc = src;
+                if (warpScale < 1.0) {
+                    fallbackSrc = new cv.Mat();
+                    cv.resize(src, fallbackSrc, new cv.Size(
+                        Math.round(src.cols * warpScale),
+                        Math.round(src.rows * warpScale)
+                    ));
+                }
+                warpedCanvas.width = fallbackSrc.cols;
+                warpedCanvas.height = fallbackSrc.rows;
+                cv.imshow(warpedCanvas, fallbackSrc);
+                if (fallbackSrc !== src) fallbackSrc.delete();
+            }
+
+            // Cleanup
+            resized.delete();
+            gray.delete();
+            smooth.delete();
+            hsv.delete();
+            saturation.delete();
+            satMask.delete();
+            edges.delete();
+            thresh.delete();
+            combined.delete();
+            kernelRect.delete();
+            contours.delete();
+            hierarchy.delete();
+            src.delete();
+
+            return {
+                corners,
+                warped: warpedCanvas,
+                width: warpedCanvas.width,
+                height: warpedCanvas.height,
+                debugImages: {
+                    stage05: stage05Canvas,
+                    stage07: stage07Canvas,
+                    stage1: stage1Canvas,
+                    stage2: stage2Canvas,
+                    stage3: stage3Canvas,
+                    stage5: stage5Canvas,
+                    stage6: stage6Canvas,
+                    stage6b: stage6bCanvas,
+                    stage7: stage7Canvas,
+                    preprocessing: stage5Canvas
+                },
+                contourLog: []
+            };
+        }
+
+        function createDebugOverlay(imageSource, corners) {
+            const naturalW = imageSource.naturalWidth || imageSource.width;
+            const naturalH = imageSource.naturalHeight || imageSource.height;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = naturalW;
+            canvas.height = naturalH;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(imageSource, 0, 0);
+
+            const colors = ['#ff2a2a', '#2a7fff', '#2aff2a', '#ffea2a'];
+
+            ctx.strokeStyle = '#ff2a2a';
+            ctx.lineWidth = 6;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y);
+            ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath();
+            ctx.stroke();
+
+            const radius = 16;
+            corners.forEach((pt, i) => {
+                ctx.fillStyle = colors[i];
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+
+            return canvas;
+        }
+
+        let currentImage = null;
+
+        function updateStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    console.log('Image loaded via file picker, currentImage set:', currentImage.width, 'x', currentImage.height);
+                    updateStatus('Processing...');
+                    setTimeout(() => runDetection(img), 100);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function testWithURL() {
+            const url = prompt('Enter image URL:');
+            if (!url) return;
+            updateStatus('Loading image...');
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                currentImage = img;
+                console.log('Image loaded via URL, currentImage set:', currentImage.width, 'x', currentImage.height);
+                updateStatus('Processing...');
+                setTimeout(() => runDetection(img), 100);
+            };
+            img.onerror = () => updateStatus('❌ Failed to load image');
+            img.src = url;
+        }
+
+        function runDetection(imageSource) {
+            try {
+                console.log('🔍 runDetection: START');
+                const t0 = performance.now();
+                const result = detectDocument(imageSource);
+                const elapsed = (performance.now() - t0).toFixed(0);
+
+                const overlayCanvas = createDebugOverlay(imageSource, result.corners);
+
+                displayResults(imageSource, result, overlayCanvas, elapsed);
+                updateStatus(`✅ Detection completed in ${elapsed}ms`);
+                console.log('🔍 runDetection: COMPLETE');
+            } catch (err) {
+                updateStatus(`❌ Error: ${err.message}`);
+                console.error(err);
+            }
+        }
+
+function displayResults(original, result, overlay, elapsed) {
+            console.log('📊 displayResults called, elapsed:', elapsed);
+            const labels = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
+
+            const html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                    <div class="result-panel">
+                        <h3>Stage 0.5: HSV Saturation (low=white paper, high=colorful carpet)</h3>
+                        <canvas id="stage05" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 0.7: Saturation Mask (white=document, black=carpet)</h3>
+                        <canvas id="stage07" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 1: Preprocessing (Bilateral Filter)</h3>
+                        <canvas id="stage1" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 2: Edge Map (Canny + Dilate)</h3>
+                        <canvas id="stage2" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 3: Brightness Map (Adaptive Threshold)</h3>
+                        <canvas id="stage3" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 5: Combined Signal (Edge AND Brightness)</h3>
+                        <canvas id="stage5" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 6: Contours Found (Gray=filtered, Green=selected)</h3>
+                        <canvas id="stage6" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 6b: All Contours Detected (Green on Black)</h3>
+                        <canvas id="stage6b" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Stage 7: Best Candidate Highlighted</h3>
+                        <canvas id="stage7" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel">
+                        <h3>Original with Detected Corners</h3>
+                        <canvas id="overlay" style="display:block; border: 1px solid #ddd; max-height: 250px;"></canvas>
+                    </div>
+                    <div class="result-panel" style="grid-column: 1 / -1;">
+                        <h3>Stage 8: Warped/Cropped Document</h3>
+                        <canvas id="warped" style="display:block; border: 1px solid #ddd;"></canvas>
+                    </div>
+                    <div class="result-panel" style="grid-column: 1 / -1;">
+                        <h3>Detection Results (${elapsed}ms)</h3>
+                        <div class="corners">
+                            <div style="margin-bottom:10px;"><strong>Corners (tl → tr → br → bl):</strong></div>
+                            ${result.corners.map((pt, i) => `
+                                <div class="corner-point">
+                                    <strong>${labels[i]}</strong><br>
+                                    x=${Math.round(pt.x)}, y=${Math.round(pt.y)}
+                                </div>
+                            `).join('')}
+                            <div style="margin-top:15px;border-top:1px solid #e0e0e0;padding-top:10px;">
+                                <strong>Warped size:</strong> ${result.width} × ${result.height}px<br>
+                                <strong>Pipeline:</strong> 8-Stage: Bilateral Filter → Edge Map → Brightness Map → Morphology → Combine → Contours → Score → Warp
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('results').innerHTML = html;
+
+            // Draw all stage canvases
+            const drawStageCanvas = (elementId, sourceCanvas) => {
+                const el = document.getElementById(elementId);
+                if (el && sourceCanvas) {
+                    el.width = sourceCanvas.width;
+                    el.height = sourceCanvas.height;
+                    const ctx = el.getContext('2d');
+                    ctx.drawImage(sourceCanvas, 0, 0);
+                }
+            };
+
+            if (result.debugImages) {
+                drawStageCanvas('stage05', result.debugImages.stage05);
+                drawStageCanvas('stage07', result.debugImages.stage07);
+                drawStageCanvas('stage1', result.debugImages.stage1);
+                drawStageCanvas('stage2', result.debugImages.stage2);
+                drawStageCanvas('stage3', result.debugImages.stage3);
+                drawStageCanvas('stage5', result.debugImages.stage5);
+                drawStageCanvas('stage6', result.debugImages.stage6);
+                drawStageCanvas('stage6b', result.debugImages.stage6b);
+                drawStageCanvas('stage7', result.debugImages.stage7);
+            }
+
+            // Draw overlay and warped
+            const overlayCanvas = document.getElementById('overlay');
+            if (overlayCanvas) {
+                overlayCanvas.width = overlay.width;
+                overlayCanvas.height = overlay.height;
+                const overlayCtx = overlayCanvas.getContext('2d');
+                overlayCtx.drawImage(overlay, 0, 0);
+            }
+
+            const warpedCanvas = document.getElementById('warped');
+            if (warpedCanvas) {
+                warpedCanvas.width = result.width;
+                warpedCanvas.height = result.height;
+                const warpedCtx = warpedCanvas.getContext('2d');
+                warpedCtx.drawImage(result.warped, 0, 0);
+            }
+        }
+
+        // Setup slider event listeners
+        function updateSliderFill(slider) {
+            if (!slider) return;
+            const value = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+            slider.style.background = `linear-gradient(to right, #2563eb 0%, #2563eb ${value}%, #d3d3d3 ${value}%, #d3d3d3 100%)`;
+        }
+
+        function setupInputs() {
+            const kernelSizeInput = document.getElementById('kernelSizeInput');
+            if (!kernelSizeInput) {
+                console.warn('Inputs not found in DOM yet');
+                return;
+            }
+
+            console.log('Setting up inputs...');
+
+            const kernelSizeValue = document.getElementById('kernelSizeValue');
+            const sigmaSlider = document.getElementById('sigmaSlider');
+            const sigmaValue = document.getElementById('sigmaValue');
+            const blockSizeSlider = document.getElementById('blockSizeSlider');
+            const blockSizeValue = document.getElementById('blockSizeValue');
+            const threshConstantSlider = document.getElementById('threshConstantSlider');
+            const threshConstantValue = document.getElementById('threshConstantValue');
+            const cannyThresh1Slider = document.getElementById('cannyThresh1Slider');
+            const cannyThresh1Value = document.getElementById('cannyThresh1Value');
+            const cannyThresh2Slider = document.getElementById('cannyThresh2Slider');
+            const cannyThresh2Value = document.getElementById('cannyThresh2Value');
+
+            const kernelSizes = [3, 5, 7, 9, 11, 13, 15];
+            const blockSizes = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21];
+
+            kernelSizeSlider.addEventListener('input', function(e) {
+                console.log('kernelSizeSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const idx = parseInt(e.target.value);
+                kernelSizeValue.textContent = kernelSizes[idx];
+                updateSliderFill(kernelSizeSlider);
+                if (currentImage) {
+                    console.log('Running detection with kernel idx:', idx);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            sigmaSlider.addEventListener('input', function(e) {
+                console.log('sigmaSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseFloat(e.target.value);
+                sigmaValue.textContent = val.toFixed(1);
+                updateSliderFill(sigmaSlider);
+                if (currentImage) {
+                    console.log('Running detection with sigma:', val);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            blockSizeSlider.addEventListener('input', function(e) {
+                console.log('blockSizeSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const idx = parseInt(e.target.value);
+                blockSizeValue.textContent = blockSizes[idx];
+                updateSliderFill(blockSizeSlider);
+                if (currentImage) {
+                    console.log('Running detection with block idx:', idx);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            threshConstantSlider.addEventListener('input', function(e) {
+                console.log('threshConstantSlider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseInt(e.target.value);
+                threshConstantValue.textContent = val;
+                updateSliderFill(threshConstantSlider);
+                if (currentImage) {
+                    console.log('Running detection with threshConstant:', val);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            cannyThresh1Slider.addEventListener('input', function(e) {
+                console.log('cannyThresh1Slider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseInt(e.target.value);
+                cannyThresh1Value.textContent = val;
+                updateSliderFill(cannyThresh1Slider);
+                if (currentImage) {
+                    console.log('Running detection with cannyThresh1:', val);
+                    runDetection(currentImage);
+                } else {
+                    console.warn('Cannot run detection: currentImage is null/undefined');
+                }
+            }, false);
+
+            cannyThresh2Slider.addEventListener('input', function(e) {
+                console.log('cannyThresh2Slider input:', e.target.value, 'currentImage:', currentImage ? 'EXISTS' : 'NULL');
+                const val = parseInt(e.target.value);
+                cannyThresh2Value.textContent = val;
+                updateSliderFill(cannyThresh2Slider);
+                if (currentImage) {
+                    console.log('Running detection with cannyThresh2:', val);
+                    runDetection(currentImage);
+                }
+            }, false);
+
+            // Initialize slider fills
+            updateSliderFill(kernelSizeSlider);
+            updateSliderFill(sigmaSlider);
+            updateSliderFill(blockSizeSlider);
+            updateSliderFill(threshConstantSlider);
+            updateSliderFill(cannyThresh1Slider);
+            updateSliderFill(cannyThresh2Slider);
+
+            // Sync display values to current slider positions
+            const kernelSizeIdx = parseInt(kernelSizeSlider.value);
+            kernelSizeValue.textContent = kernelSizes[kernelSizeIdx];
+
+            const sigmaVal = parseFloat(sigmaSlider.value);
+            sigmaValue.textContent = sigmaVal.toFixed(1);
+
+            const blockSizeIdx = parseInt(blockSizeSlider.value);
+            blockSizeValue.textContent = blockSizes[blockSizeIdx];
+
+            const threshConstantVal = parseInt(threshConstantSlider.value);
+            threshConstantValue.textContent = threshConstantVal;
+
+            const cannyThresh1Val = parseInt(cannyThresh1Slider.value);
+            cannyThresh1Value.textContent = cannyThresh1Val;
+
+            const cannyThresh2Val = parseInt(cannyThresh2Slider.value);
+            cannyThresh2Value.textContent = cannyThresh2Val;
+
+            console.log('Sliders setup complete');
+        }
+
+        // Wait for OpenCV to load
+        window.addEventListener('load', () => {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                updateStatus('✅ OpenCV.js loaded. Ready to test!');
+            } else {
+                updateStatus('⏳ Waiting for OpenCV.js to load...');
+                const checkInterval = setInterval(() => {
+                    if (typeof cv !== 'undefined' && cv.Mat) {
+                        updateStatus('✅ OpenCV.js loaded. Ready to test!');
+                        clearInterval(checkInterval);
+                    }
+                }, 100);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -160,7 +160,57 @@
         <div class="results" id="results"></div>
     </div>
 
-    <script src="../assets/opencv/opencv.js"></script>
+    <script>
+        (() => {
+            const urls = [
+                'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0/dist/opencv.js',
+                'https://unpkg.com/@techstark/opencv-js@4.12.0/dist/opencv.js',
+                'https://docs.opencv.org/4.10.0/opencv.js',
+            ];
+
+            const loadFromUrl = (index) => {
+                if (index >= urls.length) {
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = urls[index];
+                script.async = true;
+
+                const timeout = setTimeout(() => {
+                    cleanup();
+                    loadFromUrl(index + 1);
+                }, 20000);
+
+                const poll = setInterval(() => {
+                    const cv = window.cv;
+                    if (cv && cv.Mat) {
+                        cleanup();
+                    }
+                }, 100);
+
+                function cleanup() {
+                    clearTimeout(timeout);
+                    clearInterval(poll);
+                }
+
+                script.onerror = () => {
+                    cleanup();
+                    script.remove();
+                    loadFromUrl(index + 1);
+                };
+
+                document.body.appendChild(script);
+            };
+
+            window.addEventListener('load', () => {
+                if (window.cv && window.cv.Mat) {
+                    return;
+                }
+                loadFromUrl(0);
+            });
+        })();
+    </script>
     <script>
         // Import types
         class Corner {
