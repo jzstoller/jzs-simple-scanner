@@ -11,43 +11,50 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = (process.argv[2] === 'production');
 
+// 👇 NEW: detect CI and choose output path
+const isCI = process.env.CI === 'true';
+const localOutfile = '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/simple-scanner/main.js';
+const ciOutfile = 'main.js';
+
 esbuild.build({
-	banner: {
-		js: banner,
-	},
-	entryPoints: ['main.ts'],
-	bundle: true,
-	external: [
-		'obsidian',
-		'electron',
-		'@techstark/opencv-js',
-		'@codemirror/autocomplete',
-		'@codemirror/closebrackets',
-		'@codemirror/collab',
-		'@codemirror/commands',
-		'@codemirror/comment',
-		'@codemirror/fold',
-		'@codemirror/gutter',
-		'@codemirror/highlight',
-		'@codemirror/history',
-		'@codemirror/language',
-		'@codemirror/lint',
-		'@codemirror/matchbrackets',
-		'@codemirror/panel',
-		'@codemirror/rangeset',
-		'@codemirror/rectangular-selection',
-		'@codemirror/search',
-		'@codemirror/state',
-		'@codemirror/stream-parser',
-		'@codemirror/text',
-		'@codemirror/tooltip',
-		'@codemirror/view',
-		...builtins],
-	format: 'cjs',
-	watch: !prod,
-	target: 'es2016',
-	logLevel: "info",
-	sourcemap: prod ? false : 'inline',
-	treeShaking: true,
-	outfile: '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/simple-scanner/main.js',
+    banner: {
+        js: banner,
+    },
+    entryPoints: ['main.ts'],
+    bundle: true,
+    external: [
+        'obsidian',
+        'electron',
+        '@techstark/opencv-js',
+        '@codemirror/autocomplete',
+        '@codemirror/closebrackets',
+        '@codemirror/collab',
+        '@codemirror/commands',
+        '@codemirror/comment',
+        '@codemirror/fold',
+        '@codemirror/gutter',
+        '@codemirror/highlight',
+        '@codemirror/history',
+        '@codemirror/language',
+        '@codemirror/lint',
+        '@codemirror/matchbrackets',
+        '@codemirror/panel',
+        '@codemirror/rangeset',
+        '@codemirror/rectangular-selection',
+        '@codemirror/search',
+        '@codemirror/state',
+        '@codemirror/stream-parser',
+        '@codemirror/text',
+        '@codemirror/tooltip',
+        '@codemirror/view',
+        ...builtins],
+    format: 'cjs',
+    watch: !prod,
+    target: 'es2016',
+    logLevel: "info",
+    sourcemap: prod ? false : 'inline',
+    treeShaking: true,
+
+    // 👇 CHANGED: use CI path or local path
+    outfile: isCI ? ciOutfile : localOutfile,
 }).catch(() => process.exit(1));
