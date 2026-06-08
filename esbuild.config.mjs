@@ -16,7 +16,7 @@ const isCI = process.env.CI === 'true';
 const localOutfile = '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/simple-scanner/main.js';
 const ciOutfile = 'main.js';
 
-esbuild.build({
+const buildOptions = {
     banner: {
         js: banner,
     },
@@ -49,7 +49,6 @@ esbuild.build({
         '@codemirror/view',
         ...builtins],
     format: 'cjs',
-    watch: !prod,
     target: 'es2016',
     logLevel: "info",
     sourcemap: prod ? false : 'inline',
@@ -57,4 +56,11 @@ esbuild.build({
 
     // 👇 CHANGED: use CI path or local path
     outfile: isCI ? ciOutfile : localOutfile,
-}).catch(() => process.exit(1));
+};
+
+if (prod) {
+    esbuild.build(buildOptions).catch(() => process.exit(1));
+} else {
+    const context = await esbuild.context(buildOptions);
+    await context.watch();
+}
