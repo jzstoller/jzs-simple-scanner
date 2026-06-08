@@ -1,8 +1,13 @@
 name: Release Obsidian Plugin
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - '*.*.*'
+      - '*.*.*-*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -10,29 +15,38 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build plugin
         run: npm run build
 
-      - name: Zip plugin
+      - name: Verify build output
+        run: |
+          if [ ! -f "main.js" ]; then
+            echo "ERROR: main.js not found. Build likely failed."
+            exit 1
+          fi
+
+      - name: Create ZIP
         run: |
           mkdir dist
           cp manifest.json main.js styles.css dist/ 2>/dev/null || true
           cd dist
           zip -r ../plugin.zip .
 
-      - name: Upload ZIP to release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: plugin.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
