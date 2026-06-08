@@ -3,6 +3,8 @@ export interface Corner {
 	y: number;
 }
 
+import type { OpenCVModule } from "./opencv-types";
+
 export function orderPoints(pts: Corner[]): Corner[] {
 	const sorted = [...pts].sort((a, b) => (a.x + a.y) - (b.x + b.y));
 	const tl = sorted[0];
@@ -13,7 +15,7 @@ export function orderPoints(pts: Corner[]): Corner[] {
 
 export function buildTransform(
 	pts: Corner[],
-	cv: typeof import("@techstark/opencv-js"),
+	cv: OpenCVModule,
 ) {
 	const [tl, tr, br, bl] = pts;
 	const w = Math.max(dist(tl, tr), dist(bl, br));

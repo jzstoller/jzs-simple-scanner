@@ -6,6 +6,7 @@
 // esbuild's free-variable resolution, which differs between window and global in Electron.
 
 import { Corner, buildTransform, orderPoints } from "./documentGeometry";
+import type { OpenCVModule } from "./opencv-types";
 
 export interface DetectDebug {
   srcRows: number;
@@ -28,7 +29,7 @@ export interface DetectResult {
 
 export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement, logger?: (msg: string) => void): DetectResult {
   // Bind cv from window at call-time; loadOpenCV() must have resolved before this is called.
-  const cv = (window as any).cv as typeof import("@techstark/opencv-js");
+  const cv = (window as any).cv as OpenCVModule;
   const log = (msg: string) => {
     if (logger) logger(msg);
     console.log('[detectDocument] ' + msg);

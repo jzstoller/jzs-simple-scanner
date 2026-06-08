@@ -25,7 +25,6 @@ const buildOptions = {
     external: [
         'obsidian',
         'electron',
-        '@techstark/opencv-js',
         '@codemirror/autocomplete',
         '@codemirror/closebrackets',
         '@codemirror/collab',
