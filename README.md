@@ -1,6 +1,6 @@
-# Obsidian Camera
+# Simple Scanner
 
-Camera plugin for Obsidian(https://obsidian.md).
+Scanner plugin for Obsidian(https://obsidian.md).
 
 Note: This software is in Beta and may have some issues in certain systems like mobile devices
 
@@ -23,10 +23,11 @@ Or
 
 ### Manual Installation:
 
--   Create a new folder called obsidian-camera in `VaultFolder/.obsidian/plugins` folder
+-   Create a new folder called simple-scanner in `VaultFolder/.obsidian/plugins` folder
 -   Copy the `main.js` and `manifest.json` files to this folder
 -   reload Obsidian
--   enable "Obsidian Camera" extension under Settings>Community plugins>Installed pluggins
+-   enable "Simple Scanner" extension under Settings>Community plugins>Installed pluggins
+-   On iOS, go to Settings > Toolbar and search for "Simple Scanner" to add it to the toolbar
 
 ## Usage:
 

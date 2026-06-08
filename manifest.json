@@ -1,9 +1,9 @@
 {
-	"id": "jzs-scan",
-	"name": "JZS Auto Page Extract",
+	"id": "simple-scanner",
+	"name": "Simple Scanner",
 	"version": "0.1.7",
 	"minAppVersion": "1.4.0",
-	"description": "JZS Camera plugin for Obsidian",
+	"description": "Simple Scanner plugin for Obsidian",
 	"author": "Extski",
 	"isDesktopOnly": false
 }

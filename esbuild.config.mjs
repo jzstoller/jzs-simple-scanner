@@ -49,5 +49,5 @@ esbuild.build({
 	logLevel: "info",
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,
-	outfile: '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/jzs-scan/main.js',
+	outfile: '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/simple-scanner/main.js',
 }).catch(() => process.exit(1));
