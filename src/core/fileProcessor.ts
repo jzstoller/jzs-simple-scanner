@@ -38,12 +38,13 @@ export async function processSelectedFile(
 	let objectUrl: string | null = null;
 	let logMsg = "";
 	try {
-		const month = String(new Date().getMonth() + 1).padStart(2, '0');
-		const day = String(new Date().getDate()).padStart(2, '0');
+		const pad2 = (value: number) => String(value).padStart(2, '0');
+		const month = pad2(new Date().getMonth() + 1);
+		const day = pad2(new Date().getDate());
 		const year = String(new Date().getFullYear()).slice(-2);
-		const hours = String(new Date().getHours()).padStart(2, '0');
-		const minutes = String(new Date().getMinutes()).padStart(2, '0');
-		const seconds = String(new Date().getSeconds()).padStart(2, '0');
+		const hours = pad2(new Date().getHours());
+		const minutes = pad2(new Date().getMinutes());
+		const seconds = pad2(new Date().getSeconds());
 		const timestampFilename = `image_${month}${day}${year}_${hours}${minutes}${seconds}`;
 		const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true });
 		logMsg = `Upload started: ${timestamp}\nFile: ${selectedFile.name} (${selectedFile.size} bytes)\n`;

@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
@@ -16,7 +17,8 @@
       "DOM",
       "ES5",
       "ES6",
-      "ES7"
+      "ES7",
+      "ES2017"
     ]
   },
   "include": [

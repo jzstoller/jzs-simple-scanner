@@ -10,7 +10,7 @@ async function appendToLogFile(app: App, message: string) {
 class CameraModal extends Modal {
 	chosenFolderPath: string;
 	cameraSettings: CameraPluginSettings;
-	videoStream: MediaStream = null;
+	videoStream: MediaStream | null = null;
 	constructor(app: App, cameraSettings: CameraPluginSettings) {
 		super(app);
 		this.chosenFolderPath = cameraSettings.chosenFolderPath;
@@ -25,7 +25,7 @@ class CameraModal extends Modal {
 			text: "Loading..",
 		});
 		let videoEl: HTMLVideoElement;
-		let switchCameraButton: HTMLButtonElement;
+		let switchCameraButton: HTMLButtonElement | null = null;
 		const buttonsDiv = webCamContainer.createDiv();
 		const firstRow = buttonsDiv.createDiv();
 		const secondRow = buttonsDiv.createDiv();
@@ -35,6 +35,8 @@ class CameraModal extends Modal {
 			switchCameraButton = firstRow.createEl("button", {
 				text: "Switch Camera",
 			});
+			videoEl.autoplay = true;
+			videoEl.muted = true;
 		}
 		firstRow.style.display = "none";
 		secondRow.style.display = "none";
@@ -68,9 +70,6 @@ class CameraModal extends Modal {
 		let cameras: MediaDeviceInfo[] = [];
 
 		if (!Platform.isIosApp) {
-			videoEl.autoplay = true;
-			videoEl.muted = true;
-
 			// getUserMedia must precede enumerateDevices so macOS grants permission
 			// and real deviceIds are returned.
 			try {
@@ -85,7 +84,7 @@ class CameraModal extends Modal {
 				await navigator.mediaDevices.enumerateDevices()
 			).filter((d) => d.kind === "videoinput");
 
-			if (cameras.length <= 1) switchCameraButton.style.display = "none";
+			if (cameras.length <= 1 && switchCameraButton) switchCameraButton.style.display = "none";
 
 			if (this.videoStream) {
 				firstRow.style.display = "block";
@@ -158,16 +157,16 @@ class CameraModal extends Modal {
 		};
 
 		if (!Platform.isIosApp) {
-			switchCameraButton.onclick = async () => {
+			switchCameraButton!.onclick = async () => {
 				cameraIndex = (cameraIndex + 1) % cameras.length;
 				this.videoStream = await navigator.mediaDevices.getUserMedia({
 					video: { deviceId: cameras[cameraIndex].deviceId },
 				});
-				videoEl.srcObject = this.videoStream;
-				videoEl.play();
+				videoEl!.srcObject = this.videoStream;
+				videoEl!.play();
 			};
 
-			videoEl.srcObject = this.videoStream;
+			videoEl!.srcObject = this.videoStream;
 		}
 
 	}

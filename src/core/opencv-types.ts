@@ -32,7 +32,7 @@ export interface OpenCVModule {
 	matFromArray(rows: number, cols: number, type: number, data: number[]): OpenCVMat;
 	matFromImageData?(imageData: ImageData): OpenCVMat;
 	imread(source: HTMLCanvasElement): OpenCVMat;
-	resize(source: OpenCVMat, destination: OpenCVMat, size: unknown, scaleX: number, scaleY: number): void;
+	resize(source: OpenCVMat, destination: OpenCVMat, size: unknown, scaleX?: number, scaleY?: number): void;
 	cvtColor(source: OpenCVMat, destination: OpenCVMat, code: number): void;
 	split(source: OpenCVMat, destination: OpenCVMatVector): void;
 	threshold(source: OpenCVMat, destination: OpenCVMat, threshold: number, maxValue: number, type: number): void;

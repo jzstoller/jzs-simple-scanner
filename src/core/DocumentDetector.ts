@@ -53,8 +53,9 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     const imageData = ctx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
 
     let src: any;
-    if (typeof (window as any).cv.matFromImageData === 'function') {
-      src = cv.matFromImageData(imageData);
+    const matFromImageData = cv.matFromImageData;
+    if (typeof matFromImageData === 'function') {
+      src = matFromImageData(imageData);
     } else {
       src = cv.imread(srcCanvas);
     }

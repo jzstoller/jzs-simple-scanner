@@ -4,7 +4,7 @@ import { triggerUpload } from "./core/filePicker";
 import { cleanupOpenCVLoader } from "./core/opencv-loader";
 
 export default class ObsidianCamera extends Plugin {
-  settings: CameraPluginSettings;
+  settings!: CameraPluginSettings;
   async onload() {
     await this.loadSettings();
     this.addRibbonIcon("camera", "Simple Scanner", () => {
