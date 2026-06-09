@@ -1,7 +1,7 @@
 {
-  "name": "jzs_obsidian-camera-plugin",
+  "name": "jzs-simple-scanner",
   "version": "0.1.8",
-  "description": "JZS_Camera plugin for Obsidian (https://obsidian.md)",
+  "description": "Simple Scanner plugin for Obsidian (https://obsidian.md)",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
