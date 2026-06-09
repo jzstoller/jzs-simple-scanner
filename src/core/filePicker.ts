@@ -11,7 +11,7 @@ function openHiddenFilePicker(
 	const filePicker = document.createElement("input");
 	filePicker.type = "file";
 	filePicker.accept = "image/*";
-	filePicker.style.display = "none";
+	filePicker.addClass("jzs-hidden");
 	if (capture) {
 		filePicker.capture = capture;
 	}

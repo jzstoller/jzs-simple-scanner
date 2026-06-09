@@ -5,3 +5,21 @@
 .centertext{
     text-align: center;
 }
+
+/* Hide elements */
+.jzs-hidden {
+    display: none;
+}
+
+/* Show elements as block */
+.jzs-visible {
+    display: block;
+}
+
+/* Upload label styling */
+.jzs-upload-label {
+    cursor: pointer;
+    display: inline-block;
+    margin: 5px 0;
+    padding: 5px;
+}

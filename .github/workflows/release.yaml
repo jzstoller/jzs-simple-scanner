@@ -50,6 +50,10 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          files: plugin.zip
+          files: |
+            main.js
+            manifest.json
+            styles.css
+            plugin.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

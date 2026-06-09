@@ -38,8 +38,8 @@ class CameraModal extends Modal {
 			videoEl.autoplay = true;
 			videoEl.muted = true;
 		}
-		firstRow.style.display = "none";
-		secondRow.style.display = "none";
+		firstRow.addClass("jzs-hidden");
+		secondRow.addClass("jzs-hidden");
 
 		const filePicker = secondRow.createEl("input", {
 			placeholder: "Choose image file from system",
@@ -48,15 +48,12 @@ class CameraModal extends Modal {
 		filePicker.id = "filepicker";
 		filePicker.accept = "image/*";
 
-		filePicker.style.display = "none";
+		filePicker.addClass("jzs-hidden");
 
 		const label = secondRow.createEl("label");
 		label.textContent = "Upload";
-		label.style.cursor = "pointer";
-		label.style.display = "inline-block";
-		label.style.margin = "5px 0px";
-		label.style.padding = "5px";
-		label.style.border = "0.5px solid #555";
+		label.addClass("jzs-upload-label");
+
 		label.htmlFor = "filepicker";
 		label.innerHTML = "&#8679; Upload";
 
@@ -87,19 +84,20 @@ class CameraModal extends Modal {
 			if (cameras.length <= 1 && switchCameraButton) switchCameraButton.style.display = "none";
 
 			if (this.videoStream) {
-				firstRow.style.display = "block";
-				secondRow.style.display = "block";
-				statusMsg.style.display = "none";
+				firstRow.addClass("jzs-visible");
+				secondRow.addClass("jzs-visible");
+				statusMsg.addClass("jzs-hidden");
 			} else {
-				secondRow.style.display = "block";
+				secondRow.addClass("jzs-visible");
 				statusMsg.textContent =
 					"Error in loading videostream in your device..";
 			}
 		} else {
 			// iOS: Show only the Scan button and Upload button
-			firstRow.style.display = "none";
-			secondRow.style.display = "block";
-			statusMsg.style.display = "none";
+			firstRow.addClass("jzs-hidden");
+			secondRow.addClass("jzs-visible");
+			statusMsg.addClass("jzs-hidden");
+
 		}
 
 		const handleImageSelectChange = async (
