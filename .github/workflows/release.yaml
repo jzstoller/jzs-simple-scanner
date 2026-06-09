@@ -6,6 +6,9 @@ on:
       - '*.*.*'
       - '*.*.*-*'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -43,7 +46,7 @@ jobs:
           zip -r ../plugin.zip .
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
