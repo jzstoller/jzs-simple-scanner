@@ -1,9 +1,9 @@
 {
 	"id": "simple-scanner",
 	"name": "Simple Scanner",
-	"version": "0.1.9",
+	"version": "0.1.10",
 	"minAppVersion": "1.4.0",
-	"description": "Simple Scanner plugin for Obsidian",
+	"description": "Clean, crop, and deskew documents.",
 	"author": "Extski",
 	"isDesktopOnly": false
 }

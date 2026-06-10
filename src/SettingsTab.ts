@@ -26,7 +26,10 @@ export default class CameraSettingsTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl("h2", { text: "Obsidian-Camera settings" });
+
+		new Setting(containerEl)
+			.setName("Obsidian-Camera settings")
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName("Folder Path")

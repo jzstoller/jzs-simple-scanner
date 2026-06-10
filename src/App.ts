@@ -14,7 +14,7 @@ export default class ObsidianCamera extends Plugin {
 
     this.addCommand({
       id: "jzs-doc-upload",
-      name: "Simple Scanner",
+      name: "Scan",
       icon: "camera",
       callback: () => {
         triggerUpload(this.app, this.settings);
@@ -28,7 +28,11 @@ export default class ObsidianCamera extends Plugin {
 
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = await this.loadData();
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(data as Partial<CameraPluginSettings> | null)
+    };
   }
 
   async saveSettings() {

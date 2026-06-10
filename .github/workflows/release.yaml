@@ -38,13 +38,6 @@ jobs:
             exit 1
           fi
 
-      - name: Create ZIP
-        run: |
-          mkdir dist
-          cp manifest.json main.js styles.css dist/ 2>/dev/null || true
-          cd dist
-          zip -r ../plugin.zip .
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -54,6 +47,5 @@ jobs:
             main.js
             manifest.json
             styles.css
-            plugin.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

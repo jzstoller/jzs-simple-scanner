@@ -81,7 +81,7 @@ class CameraModal extends Modal {
 				await navigator.mediaDevices.enumerateDevices()
 			).filter((d) => d.kind === "videoinput");
 
-			if (cameras.length <= 1 && switchCameraButton) switchCameraButton.style.display = "none";
+			if (cameras.length <= 1 && switchCameraButton) switchCameraButton.addClass("jzs-hidden");
 
 			if (this.videoStream) {
 				firstRow.addClass("jzs-visible");

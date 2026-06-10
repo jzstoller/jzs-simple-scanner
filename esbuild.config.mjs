@@ -1,4 +1,4 @@
-import builtins from 'builtin-modules';
+import { builtinModules } from "module";
 import esbuild from "esbuild";
 import process from "process";
 
@@ -46,7 +46,7 @@ const buildOptions = {
         '@codemirror/text',
         '@codemirror/tooltip',
         '@codemirror/view',
-        ...builtins],
+        ...builtinModules],
     format: 'cjs',
     target: 'es2016',
     logLevel: "info",
