@@ -3,6 +3,7 @@ export interface OpenCVMat {
 	cols: number;
 	delete(): void;
 	data: Uint8Array;
+	type(): number;
 	ucharPtr(row: number, col: number): number[];
 	intPtr(row: number, col: number): number[];
 }

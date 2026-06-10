@@ -310,27 +310,13 @@ export function detectDocument(
 			M.delete();
 			if (warpSrc !== src) warpSrc.delete();
 
-			dstSamplePixel =
-				dst.rows > 0 && dst.cols > 0
-					? [
-							dst.ucharPtr(
-								Math.floor(dst.rows / 2),
-								Math.floor(dst.cols / 2),
-							)[0],
-							dst.ucharPtr(
-								Math.floor(dst.rows / 2),
-								Math.floor(dst.cols / 2),
-							)[1],
-							dst.ucharPtr(
-								Math.floor(dst.rows / 2),
-								Math.floor(dst.cols / 2),
-							)[2],
-							dst.ucharPtr(
-								Math.floor(dst.rows / 2),
-								Math.floor(dst.cols / 2),
-							)[3],
-						]
-					: [-1, -1, -1, -1];
+			if (dst.rows > 0 && dst.cols > 0) {
+				const dstPtr = dst.ucharPtr(
+					Math.floor(dst.rows / 2),
+					Math.floor(dst.cols / 2),
+				);
+				dstSamplePixel = [dstPtr[0], dstPtr[1], dstPtr[2], dstPtr[3]];
+			}
 
 			warpedCanvas = document.createElement("canvas");
 			warpedCanvas.width = Math.round(w);
