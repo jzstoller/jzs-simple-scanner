@@ -1,5 +1,5 @@
 import { Plugin } from "obsidian";
-import CameraSettingsTab, {
+import ConfigTab, {
 	CameraPluginSettings,
 	DEFAULT_SETTINGS,
 } from "./SettingsTab";
@@ -13,7 +13,7 @@ export default class SimpleScanner extends Plugin {
 		this.addRibbonIcon("camera", "Simple Scanner", () => {
 			triggerUpload(this.app, this.settings);
 		});
-		this.addSettingTab(new CameraSettingsTab(this.app, this));
+		this.addSettingTab(new ConfigTab(this.app, this));
 
 		this.addCommand({
 			id: "jzs-doc-upload",

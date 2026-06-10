@@ -15,7 +15,7 @@ export interface CameraPluginHost {
 	saveSettings(): Promise<void>;
 }
 
-export default class CameraSettingsTab extends PluginSettingTab {
+export default class ConfigTab extends PluginSettingTab {
 	plugin: CameraPluginHost;
 
 	constructor(app: App, plugin: CameraPluginHost) {

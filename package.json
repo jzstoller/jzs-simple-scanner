@@ -1,6 +1,6 @@
 {
   "name": "jzs-simple-scanner",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Simple Scanner plugin for Obsidian (https://obsidian.md)",
   "main": "main.js",
   "scripts": {
