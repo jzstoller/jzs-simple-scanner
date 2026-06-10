@@ -173,7 +173,7 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     let corners: [Corner, Corner, Corner, Corner];
     let dstSamplePixel: number[] = [-1, -1, -1, -1];
 
-    if (approx && approx.rows > 0) {
+    if (approx && approx.rows >= 4) {
       // Extract corner points from approx
       const pts: Corner[] = [];
 

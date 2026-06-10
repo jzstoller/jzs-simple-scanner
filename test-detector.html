@@ -140,8 +140,7 @@
             height: 8px;
             border-radius: 5px;
         }
-            padding-left: 10px;
-        }
+        
     </style>
 </head>
 <body>
@@ -161,56 +160,39 @@
     </div>
 
     <script>
-        (() => {
-            const urls = [
-                'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0/dist/opencv.js',
-                'https://unpkg.com/@techstark/opencv-js@4.12.0/dist/opencv.js',
-                'https://docs.opencv.org/4.10.0/opencv.js',
-            ];
+    window.Module = {
+    onRuntimeInitialized() {
+        cvReady = true;
+        console.log('✅ OpenCV ready');
+        updateStatus('✅ OpenCV.js loaded. Ready to test!');
+    },
+    printErr(text) {
+        console.error('OpenCV stderr:', text);
+    },
+    onAbort(err) {
+        console.error('OpenCV abort:', err);
+        updateStatus('❌ OpenCV aborted: ' + err);
+    }
+    };
 
-            const loadFromUrl = (index) => {
-                if (index >= urls.length) {
-                    return;
-                }
+    window.addEventListener('load', () => {
+    updateStatus('Loading OpenCV...');
+    const script = document.createElement('script');
+    script.src = 'https://docs.opencv.org/4.x/opencv.js';
+    script.async = false;
 
-                const script = document.createElement('script');
-                script.src = urls[index];
-                script.async = true;
+    script.onload = () => {
+        updateStatus('Script loaded. Waiting for OpenCV runtime...');
+    };
 
-                const timeout = setTimeout(() => {
-                    cleanup();
-                    loadFromUrl(index + 1);
-                }, 20000);
+    script.onerror = () => {
+        updateStatus('❌ Failed to load OpenCV.js');
+    };
 
-                const poll = setInterval(() => {
-                    const cv = window.cv;
-                    if (cv && cv.Mat) {
-                        cleanup();
-                    }
-                }, 100);
-
-                function cleanup() {
-                    clearTimeout(timeout);
-                    clearInterval(poll);
-                }
-
-                script.onerror = () => {
-                    cleanup();
-                    script.remove();
-                    loadFromUrl(index + 1);
-                };
-
-                document.body.appendChild(script);
-            };
-
-            window.addEventListener('load', () => {
-                if (window.cv && window.cv.Mat) {
-                    return;
-                }
-                loadFromUrl(0);
-            });
-        })();
+    document.body.appendChild(script);
+    });
     </script>
+
     <script>
         // Import types
         class Corner {
@@ -660,6 +642,7 @@ function detectDocument(imageSource) {
         }
 
         let currentImage = null;
+        let cvReady = false;
 
         function updateStatus(msg) {
             document.getElementById('status').textContent = msg;
@@ -700,6 +683,11 @@ function detectDocument(imageSource) {
         }
 
         function runDetection(imageSource) {
+            if (!cvReady || typeof cv === 'undefined') {
+                updateStatus('❌ OpenCV is not ready yet');
+                return;
+            }
+
             try {
                 console.log('🔍 runDetection: START');
                 const t0 = performance.now();
@@ -966,20 +954,7 @@ function displayResults(original, result, overlay, elapsed) {
             console.log('Sliders setup complete');
         }
 
-        // Wait for OpenCV to load
-        window.addEventListener('load', () => {
-            if (typeof cv !== 'undefined' && cv.Mat) {
-                updateStatus('✅ OpenCV.js loaded. Ready to test!');
-            } else {
-                updateStatus('⏳ Waiting for OpenCV.js to load...');
-                const checkInterval = setInterval(() => {
-                    if (typeof cv !== 'undefined' && cv.Mat) {
-                        updateStatus('✅ OpenCV.js loaded. Ready to test!');
-                        clearInterval(checkInterval);
-                    }
-                }, 100);
-            }
-        });
+     
     </script>
 </body>
 </html>
