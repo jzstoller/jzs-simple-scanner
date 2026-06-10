@@ -40,10 +40,22 @@ export function detectDocument(
 ): DetectResult {
 	// Bind cv from window at call-time; loadOpenCV() must have resolved before this is called.
 	const cv = (window as any).cv as OpenCVModule;
+
+	if (!cv) {
+		throw new Error("OpenCV is not loaded on window.cv");
+	}
+	if (typeof cv.Mat !== "function") {
+		throw new Error("OpenCV runtime is present but not initialized");
+	}
+
 	const log = (msg: string) => {
 		if (logger) logger(msg);
 		console.log("[detectDocument] " + msg);
 	};
+
+	log("cv present: " + String(!!cv));
+	log("cv.Mat type: " + typeof (cv as any).Mat);
+	log("cv.matFromImageData type: " + typeof (cv as any).matFromImageData);
 
 	try {
 		// Pre-draw to an explicit canvas to work around cv.imread issues with
@@ -147,6 +159,26 @@ export function detectDocument(
 		// It is used later during contour validation via quadOverlapsPaper().
 		let combined = new cv.Mat();
 		cv.bitwise_and(thresh, edges, combined);
+
+		// Adaptively close gaps caused by photo/colored regions at document boundaries.
+		// White documents (high paperRatio) already have a clean outline — skip closing.
+		const totalPixels = resized.rows * resized.cols;
+		let paperPixelCount = 0;
+		const satData = (satMask as any).data as Uint8Array;
+		for (let i = 0; i < satData.length; i++) {
+			if (satData[i] > 0) paperPixelCount++;
+		}
+		const paperRatio = paperPixelCount / totalPixels;
+
+		const closeSize = paperRatio < 0.25 ? 15 : paperRatio < 0.5 ? 9 : 0;
+		if (closeSize > 0) {
+			const closeKernel = cv.getStructuringElement(
+				cv.MORPH_RECT,
+				new cv.Size(closeSize, closeSize),
+			);
+			cv.morphologyEx(combined, combined, cv.MORPH_CLOSE, closeKernel);
+			closeKernel.delete();
+		}
 
 		// Stage 4: Find Contours
 		let contours = new cv.MatVector();
