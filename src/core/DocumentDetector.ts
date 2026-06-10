@@ -53,9 +53,9 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     const imageData = ctx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
 
     let src: any;
-    const matFromImageData = cv.matFromImageData;
-    if (typeof matFromImageData === 'function') {
-      src = matFromImageData(imageData);
+
+    if (typeof cv.matFromImageData === "function") {
+      src = cv.matFromImageData(imageData);
     } else {
       src = cv.imread(srcCanvas);
     }
@@ -155,9 +155,15 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     }
 
     // Sample a pixel from src to verify cv.imread produced real data
-    const srcSamplePixel: number[] = src.rows > 0 && src.cols > 0
-      ? [src.ucharPtr(0, 0)[0], src.ucharPtr(0, 0)[1], src.ucharPtr(0, 0)[2], src.ucharPtr(0, 0)[3]]
-      : [-1, -1, -1, -1];
+    const srcSamplePixel: number[] =
+      src.rows > 0 && src.cols > 0
+        ? [
+          Number(src.ucharPtr(0, 0)[0]),
+          Number(src.ucharPtr(0, 0)[1]),
+          Number(src.ucharPtr(0, 0)[2]),
+          Number(src.ucharPtr(0, 0)[3]),
+        ]
+        : [-1, -1, -1, -1];
 
     // Cap warp resolution to avoid WASM heap exhaustion on memory-constrained devices (e.g. iOS).
     // 2000px on the longer side is plenty for high-quality document scans.

@@ -28,7 +28,7 @@ export default class CameraSettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Obsidian-Camera settings")
+			.setName("Simple Scanner")
 			.setHeading();
 
 		new Setting(containerEl)

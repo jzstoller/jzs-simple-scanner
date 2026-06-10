@@ -2,7 +2,7 @@ import { App, Notice, Platform } from "obsidian";
 
 type Logger = (msg: string) => void;
 
-type TimerHandle = ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>;
+type TimerHandle = number;
 
 type OpenCVLoaderState = {
   script: HTMLScriptElement | null;
@@ -39,10 +39,10 @@ function deleteOpenCVGlobals() {
 }
 
 function clearLoaderTimers(state: OpenCVLoaderState) {
-  if (state.sourceTimeout) clearTimeout(state.sourceTimeout);
-  if (state.overallTimeout) clearTimeout(state.overallTimeout);
-  if (state.cvCheckInterval) clearInterval(state.cvCheckInterval);
-  if (state.checkCvInterval) clearInterval(state.checkCvInterval);
+  if (state.sourceTimeout) window.clearTimeout(state.sourceTimeout);
+  if (state.overallTimeout) window.clearTimeout(state.overallTimeout);
+  if (state.cvCheckInterval) window.clearInterval(state.cvCheckInterval);
+  if (state.checkCvInterval) window.clearInterval(state.checkCvInterval);
 }
 
 function abortActiveLoader() {

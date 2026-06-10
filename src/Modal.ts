@@ -55,7 +55,7 @@ class CameraModal extends Modal {
 		label.addClass("jzs-upload-label");
 
 		label.htmlFor = "filepicker";
-		label.innerHTML = "&#8679; Upload";
+		label.setText("↑ Upload");
 
 		label.appendChild(filePicker);
 
@@ -106,7 +106,7 @@ class CameraModal extends Modal {
 		) => {
 			const chosenFile = file;
 			const bufferFile = await chosenFile.arrayBuffer();
-			saveFile(bufferFile, isImage, chosenFile.name.split(" ").join("-"));
+			await saveFile(bufferFile, isImage, chosenFile.name.split(" ").join("-"));
 		};
 
 		filePicker.onchange = async () => {
@@ -114,7 +114,7 @@ class CameraModal extends Modal {
 			const selectedFile = filePicker.files[0];
 			label.textContent = `Selected: ${selectedFile.name}`;
 			const isImage = selectedFile.type.startsWith("image/");
-			handleImageSelectChange(selectedFile, isImage);
+			await handleImageSelectChange(selectedFile, isImage);
 		};
 
 		const saveFile = async (
@@ -123,12 +123,9 @@ class CameraModal extends Modal {
 			fileName = "",
 		) => {
 			if (!fileName) {
-				const dateString = (new Date() + "")
-					.slice(4, 28)
-					.split(" ")
-					.join("_")
-					.split(":")
-					.join("-");
+
+				const dateString = new Date().toISOString().replace(/[:.]/g, "-");
+
 				fileName = `image_${dateString}.png`;
 			}
 			new Notice(`Adding new Image to vault...`);
@@ -161,7 +158,7 @@ class CameraModal extends Modal {
 					video: { deviceId: cameras[cameraIndex].deviceId },
 				});
 				videoEl!.srcObject = this.videoStream;
-				videoEl!.play();
+				await videoEl!.play();
 			};
 
 			videoEl!.srcObject = this.videoStream;
