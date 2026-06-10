@@ -237,7 +237,8 @@ export function detectDocument(
 		let srcSamplePixel: number[];
 
 		if (src.rows > 0 && src.cols > 0) {
-			const ptr = src.ucharPtr(0, 0) as Uint8Array;
+			const ptr = src.ucharPtr(0, 0) as unknown as number[];
+
 			srcSamplePixel = [ptr[0], ptr[1], ptr[2], ptr[3]];
 		} else {
 			srcSamplePixel = [-1, -1, -1, -1];
