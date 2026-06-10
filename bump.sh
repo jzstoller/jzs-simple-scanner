@@ -36,6 +36,6 @@ git tag "$VERSION"
 
 # 5. Push commit + tag
 git push
-git push --tags
+git push origin "$VERSION"
 
 echo "Version bump complete: $VERSION"
