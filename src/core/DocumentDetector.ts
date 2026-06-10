@@ -13,7 +13,7 @@ import {
 	ptsFromMat,
 	quadOverlapsPaper,
 } from "./documentGeometry";
-import type { OpenCVModule } from "./opencv-types";
+import type { OpenCVMat, OpenCVModule } from "./opencv-types";
 
 export interface DetectDebug {
 	srcRows: number;
@@ -81,24 +81,24 @@ export function detectDocument(
 			srcCanvas.height,
 		);
 
-		let src: any;
+		let src: OpenCVMat;
 
 		if (typeof cv.matFromImageData === "function") {
-			src = cv.matFromImageData(imageData);
+			src = cv.matFromImageData(imageData) as OpenCVMat;
 		} else {
-			src = cv.imread(srcCanvas);
+			src = cv.imread(srcCanvas) as OpenCVMat;
 		}
 
 		// Stage 1: Preprocessing
 		// Resize to ~1200px width for speed
-		let resized = new cv.Mat();
+		let resized = new cv.Mat() as OpenCVMat;
 		const scale = Math.min(1.0, 1200 / src.cols);
 		cv.resize(src, resized, new cv.Size(0, 0), scale, scale);
 
 		// Extract saturation and value channels for paper detection
-		const rgb = new cv.Mat();
+		const rgb = new cv.Mat() as OpenCVMat;
 		cv.cvtColor(resized, rgb, cv.COLOR_RGBA2RGB);
-		const hsv = new cv.Mat();
+		const hsv = new cv.Mat() as OpenCVMat;
 		cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
 		rgb.delete();
 
@@ -108,10 +108,10 @@ export function detectDocument(
 		const value = hsvChannels.get(2); // V channel
 		hsvChannels.delete();
 
-		const satMask = new cv.Mat();
+		const satMask = new cv.Mat() as OpenCVMat;
 		cv.threshold(saturation, satMask, 100, 255, cv.THRESH_BINARY_INV);
 
-		const valMask = new cv.Mat();
+		const valMask = new cv.Mat() as OpenCVMat;
 		cv.threshold(value, valMask, 120, 255, cv.THRESH_BINARY);
 
 		cv.bitwise_and(satMask, valMask, satMask);
@@ -119,16 +119,16 @@ export function detectDocument(
 		value.delete();
 
 		// Convert to grayscale
-		let gray = new cv.Mat();
+		let gray = new cv.Mat() as OpenCVMat;
 		cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
 
 		// Bilateral filter (suppress texture, preserve edges)
-		let smooth = new cv.Mat();
+		let smooth = new cv.Mat() as OpenCVMat;
 		cv.bilateralFilter(gray, smooth, 9, 75, 75, cv.BORDER_DEFAULT);
 
 		// Stage 2: Create Multiple Detection Maps
 		// A. Edge Map
-		let edges = new cv.Mat();
+		let edges = new cv.Mat() as OpenCVMat;
 		cv.Canny(smooth, edges, 50, 150);
 
 		// Dilate to thicken edges
@@ -139,7 +139,7 @@ export function detectDocument(
 		cv.dilate(edges, edges, kernelRect);
 
 		// B. Adaptive Brightness Map
-		let thresh = new cv.Mat();
+		let thresh = new cv.Mat() as OpenCVMat;
 		cv.adaptiveThreshold(
 			smooth,
 			thresh,
@@ -157,14 +157,14 @@ export function detectDocument(
 		// Stage 3: Combine Signals (edge AND brightness only)
 		// satMask is intentionally NOT applied here.
 		// It is used later during contour validation via quadOverlapsPaper().
-		let combined = new cv.Mat();
+		let combined = new cv.Mat() as OpenCVMat;
 		cv.bitwise_and(thresh, edges, combined);
 
 		// Adaptively close gaps caused by photo/colored regions at document boundaries.
 		// White documents (high paperRatio) already have a clean outline — skip closing.
 		const totalPixels = resized.rows * resized.cols;
 		let paperPixelCount = 0;
-		const satData = (satMask as any).data as Uint8Array;
+		const satData = satMask.data;
 		for (let i = 0; i < satData.length; i++) {
 			if (satData[i] > 0) paperPixelCount++;
 		}
@@ -182,7 +182,7 @@ export function detectDocument(
 
 		// Stage 4: Find Contours
 		let contours = new cv.MatVector();
-		let hierarchy = new cv.Mat();
+		let hierarchy = new cv.Mat() as OpenCVMat;
 		cv.findContours(
 			combined,
 			contours,
@@ -210,8 +210,8 @@ export function detectDocument(
 		// Compute convex hull to smooth out squiggly edges
 		let approx: any = null;
 		if (bestCnt) {
-			const hull = new cv.Mat();
-			const tempApprox = new cv.Mat();
+			const hull = new cv.Mat() as OpenCVMat;
+			const tempApprox = new cv.Mat() as OpenCVMat;
 
 			cv.convexHull(bestCnt, hull);
 			const peri = cv.arcLength(hull, true);
@@ -281,10 +281,10 @@ export function detectDocument(
 			];
 
 			// Down-scale source for warp if needed, then scale corners accordingly
-			let warpSrc = src;
+			let warpSrc = src as OpenCVMat;
 			let warpCorners = corners;
 			if (warpScale < 1.0) {
-				warpSrc = new cv.Mat();
+				warpSrc = new cv.Mat() as OpenCVMat;
 				cv.resize(
 					src,
 					warpSrc,
@@ -300,7 +300,7 @@ export function detectDocument(
 			}
 
 			const { M, w, h } = buildTransform(warpCorners, cv);
-			let dst = new cv.Mat();
+			let dst = new cv.Mat() as OpenCVMat;
 			cv.warpPerspective(
 				warpSrc,
 				dst,
@@ -349,9 +349,9 @@ export function detectDocument(
 			] as [Corner, Corner, Corner, Corner];
 
 			log("Using fallback (no valid corners detected)");
-			let fallbackSrc = src;
+			let fallbackSrc = src as OpenCVMat;
 			if (warpScale < 1.0) {
-				fallbackSrc = new cv.Mat();
+				fallbackSrc = new cv.Mat() as OpenCVMat;
 				cv.resize(
 					src,
 					fallbackSrc,

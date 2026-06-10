@@ -28,7 +28,8 @@ npm version "$VERSION" --no-git-tag-version
 npm run version
 
 # 3. Commit changes
-git add package.json manifest.json versions.json
+# git add package.json manifest.json versions.json
+git add .
 git commit -m "Release $VERSION"
 
 # 4. Create tag

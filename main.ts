@@ -1,3 +1,3 @@
-import ObsidianCamera from "src/App";
+import SimpleScanner from "src/App";
 
-export default ObsidianCamera
+export default SimpleScanner;
