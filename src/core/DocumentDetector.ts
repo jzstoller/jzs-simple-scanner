@@ -155,15 +155,14 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     }
 
     // Sample a pixel from src to verify cv.imread produced real data
-    const srcSamplePixel: number[] =
-      src.rows > 0 && src.cols > 0
-        ? [
-          Number(src.ucharPtr(0, 0)[0]),
-          Number(src.ucharPtr(0, 0)[1]),
-          Number(src.ucharPtr(0, 0)[2]),
-          Number(src.ucharPtr(0, 0)[3]),
-        ]
-        : [-1, -1, -1, -1];
+    let srcSamplePixel: number[];
+
+    if (src.rows > 0 && src.cols > 0) {
+      const ptr = src.ucharPtr(0, 0) as Uint8Array;
+      srcSamplePixel = [ptr[0], ptr[1], ptr[2], ptr[3]];
+    } else {
+      srcSamplePixel = [-1, -1, -1, -1];
+    }
 
     // Cap warp resolution to avoid WASM heap exhaustion on memory-constrained devices (e.g. iOS).
     // 2000px on the longer side is plenty for high-quality document scans.
@@ -177,12 +176,12 @@ export function detectDocument(imageSource: HTMLImageElement | HTMLCanvasElement
     if (approx && approx.rows > 0) {
       // Extract corner points from approx
       const pts: Corner[] = [];
+
       for (let i = 0; i < approx.rows; i++) {
-        pts.push({
-          x: approx.intPtr(i, 0)[0],
-          y: approx.intPtr(i, 0)[1]
-        });
+        const ip = approx.intPtr(i, 0) as Int32Array;
+        pts.push({ x: ip[0], y: ip[1] });
       }
+
       approx.delete();
 
       // Scale corners back to original full-resolution coordinates

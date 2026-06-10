@@ -75,7 +75,7 @@ export async function processSelectedFile(
 
 		try {
 			const oldCropped = app.vault.getAbstractFileByPath(croppedPath);
-			if (oldCropped) await app.vault.delete(oldCropped);
+			if (oldCropped) await app.fileManager.trashFile(oldCropped);
 		} catch (e) {
 			logMsg += `Could not delete old cropped: ${e}\n`;
 		}
@@ -92,7 +92,7 @@ export async function processSelectedFile(
 
 			try {
 				const oldOverlay = app.vault.getAbstractFileByPath(overlayPath);
-				if (oldOverlay) await app.vault.delete(oldOverlay);
+				if (oldOverlay) await app.fileManager.trashFile(oldOverlay);
 				logMsg += `Deleted old overlay file\n`;
 			} catch (e) {
 				logMsg += `Could not delete old overlay: ${e}\n`;

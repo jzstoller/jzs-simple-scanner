@@ -1,5 +1,10 @@
 import { App, Notice, Platform } from "obsidian";
 
+interface OpenCVWasmModule {
+  _malloc?: unknown;
+  [key: string]: unknown;
+}
+
 type Logger = (msg: string) => void;
 
 type TimerHandle = number;
@@ -184,7 +189,7 @@ export async function loadOpenCV(app: App, logger?: Logger, timeoutMs = 60000): 
           return;
         }
         const cv = (window as any).cv;
-        const mod = (window as any).Module;
+        const mod = (window as any).Module as OpenCVWasmModule;
         if (!cv && mod && mod._malloc) {
           (window as any).cv = mod;
         }

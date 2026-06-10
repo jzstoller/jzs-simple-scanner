@@ -28,7 +28,7 @@ export default class CameraSettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Simple Scanner")
+			.setName("Scan Options")
 			.setHeading();
 
 		new Setting(containerEl)
