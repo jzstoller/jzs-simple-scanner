@@ -1,6 +1,6 @@
 import { App, Platform } from "obsidian";
 import CameraModal from "../Modal";
-import { CameraPluginSettings } from "../SettingsTab";
+import { CameraPluginSettings } from "../ConfigTab";
 
 type PickerHandler = (selectedFile: File) => Promise<void>;
 

@@ -1,5 +1,5 @@
 import { App, MarkdownView, Modal, Notice, Platform } from "obsidian";
-import { CameraPluginSettings } from "./SettingsTab";
+import { CameraPluginSettings } from "./ConfigTab";
 import { processSelectedFile } from "./core/fileProcessor";
 
 async function appendToLogFile(app: App, message: string) {

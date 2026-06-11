@@ -2,7 +2,7 @@ import { Plugin } from "obsidian";
 import ConfigTab, {
 	CameraPluginSettings,
 	DEFAULT_SETTINGS,
-} from "./SettingsTab";
+} from "./ConfigTab";
 import { triggerUpload } from "./core/filePicker";
 import { cleanupOpenCVLoader } from "./core/opencv-loader";
 
