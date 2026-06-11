@@ -3,7 +3,7 @@ export interface Corner {
 	y: number;
 }
 
-import type { OpenCVModule } from "./opencv-types";
+import type { OpenCVMat, OpenCVModule } from "./opencv-types";
 
 export function orderPoints(pts: Corner[]): Corner[] {
 	const sorted = [...pts].sort((a, b) => a.x + a.y - (b.x + b.y));
@@ -48,9 +48,10 @@ export function dist(a: Corner, b: Corner): number {
 }
 
 export function ptsFromMat(mat: any): Corner[] {
+	const m = mat as OpenCVMat;
 	const pts: Corner[] = [];
 	for (let i = 0; i < 4; i++) {
-		const ip = mat.intPtr(i, 0) as Int32Array;
+		const ip = m.intPtr(i, 0);
 		pts.push({ x: ip[0], y: ip[1] });
 	}
 	return pts;
@@ -91,13 +92,15 @@ export function isValidQuad(pts: Corner[]): boolean {
 }
 
 export function quadOverlapsPaper(pts: Corner[], paperMask: any): boolean {
+	const mat = paperMask as OpenCVMat;
+
 	const xs = pts.map((p) => p.x);
 	const ys = pts.map((p) => p.y);
 
 	const x0 = Math.max(0, Math.min(...xs));
 	const y0 = Math.max(0, Math.min(...ys));
-	const x1 = Math.min(paperMask.cols - 1, Math.max(...xs));
-	const y1 = Math.min(paperMask.rows - 1, Math.max(...ys));
+	const x1 = Math.min(mat.cols - 1, Math.max(...xs));
+	const y1 = Math.min(mat.rows - 1, Math.max(...ys));
 
 	let paperPixels = 0;
 	let total = 0;
@@ -105,7 +108,8 @@ export function quadOverlapsPaper(pts: Corner[], paperMask: any): boolean {
 
 	for (let y = y0; y <= y1; y += step) {
 		for (let x = x0; x <= x1; x += step) {
-			if (paperMask.ucharAt(y, x) > 0) paperPixels++;
+			const v = mat.ucharAt(y, x) as number;
+			if (v > 0) paperPixels++;
 			total++;
 		}
 	}

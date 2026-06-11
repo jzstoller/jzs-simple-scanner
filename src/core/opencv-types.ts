@@ -4,8 +4,13 @@ export interface OpenCVMat {
 	delete(): void;
 	data: Uint8Array;
 	type(): number;
-	ucharPtr(row: number, col: number): number[];
-	intPtr(row: number, col: number): number[];
+
+	// Pointer-returning functions
+	ucharPtr(row: number, col: number): Uint8Array;
+	intPtr(row: number, col: number): Int32Array;
+
+	// Single-value accessor
+	ucharAt(row: number, col: number): number;
 }
 
 export interface OpenCVMatVector {

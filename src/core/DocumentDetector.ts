@@ -213,7 +213,10 @@ export function detectDocument(
 			const hull = new cv.Mat() as OpenCVMat;
 			const tempApprox = new cv.Mat() as OpenCVMat;
 
-			cv.convexHull(bestCnt, hull);
+			const cnt = bestCnt as OpenCVMat;
+			const h = hull as OpenCVMat;
+			cv.convexHull(cnt, h);
+
 			const peri = cv.arcLength(hull, true);
 			cv.approxPolyDP(hull, tempApprox, 0.04 * peri, true);
 
