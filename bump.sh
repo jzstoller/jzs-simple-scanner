@@ -29,8 +29,10 @@ npm run version
 
 # 3. Commit changes
 # git add package.json manifest.json versions.json
+echo "Enter commit message:"
+read MESSAGE
 git add .
-git commit -m "Release $VERSION"
+git commit -m "Release $VERSION — $MESSAGE"
 
 # 4. Create tag
 git tag "$VERSION"

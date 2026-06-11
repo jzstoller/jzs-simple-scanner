@@ -28,10 +28,6 @@ export default class ConfigTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Scan Options")
-			.setHeading();
-
-		new Setting(containerEl)
 			.setName("Folder Path")
 			.setDesc("Folder where the scanned images should be saved")
 			.addText((text) =>
