@@ -21,10 +21,15 @@ type OpenCVLoaderState = {
 	moduleObject: any;
 };
 
-const LOCAL_OPENCV_SCRIPT =
-	".obsidian/plugins/simple-scanner/assets/opencv/opencv.min.js";
-const LOCAL_OPENCV_WASM =
-	".obsidian/plugins/simple-scanner/assets/opencv/opencv.min.wasm";
+const LOCAL_OPENCV_SCRIPT = "assets/opencv/opencv.min.js";
+const LOCAL_OPENCV_WASM = "assets/opencv/opencv.min.wasm";
+const PLUGIN_ID = "simple-scanner";
+
+function getPluginAssetPath(app: App, relativePath: string) {
+	return app.vault.adapter.getResourcePath(
+		`${app.vault.configDir}/plugins/${PLUGIN_ID}/${relativePath}`,
+	);
+}
 
 let activeLoader: OpenCVLoaderState | null = null;
 
@@ -136,18 +141,39 @@ export async function loadOpenCV(
 
 		const script = document.createElement("script");
 		script.id = "opencvjs";
-		script.src = app.vault.adapter.getResourcePath(LOCAL_OPENCV_SCRIPT);
+		const scriptSrc = getPluginAssetPath(app, LOCAL_OPENCV_SCRIPT);
+		script.src = scriptSrc;
 		script.async = true;
 		state.script = script;
+
+		script.onload = async () => {
+			if (state.aborted || state.finished) return;
+
+			const cvFactory = (window as any).cv;
+			if (typeof cvFactory === "function" && !cvFactory.Mat) {
+				try {
+					const runtime = await cvFactory(state.moduleObject);
+					if (runtime && !state.aborted && !state.finished) {
+						(window as any).cv = runtime;
+					}
+				} catch (error) {
+					reject(
+						new Error(
+							`Failed to initialize local OpenCV build: ${String(error)}`,
+						),
+					);
+				}
+			}
+		};
 
 		state.previousModuleValue = (window as any).Module;
 		state.moduleObject = {
 			...(state.previousModuleValue || {}),
 			locateFile: (file: string) => {
 				if (file.endsWith(".wasm")) {
-					return app.vault.adapter.getResourcePath(LOCAL_OPENCV_WASM);
+					return getPluginAssetPath(app, LOCAL_OPENCV_WASM);
 				}
-				return app.vault.adapter.getResourcePath(file);
+				return getPluginAssetPath(app, file);
 			},
 			onRuntimeInitialized: () => {
 				if (state.aborted || state.finished) return;
@@ -189,7 +215,7 @@ export async function loadOpenCV(
 		}, 100);
 
 		script.onerror = () => {
-			reject(new Error("Failed to load local OpenCV build"));
+			reject(new Error(`Failed to load local OpenCV build: ${scriptSrc}`));
 		};
 
 		document.body.appendChild(script);
