@@ -1,6 +1,6 @@
 import { App, MarkdownView, Modal, Notice, Platform } from "obsidian";
 import { CameraPluginSettings } from "./ConfigTab";
-import { processSelectedFile } from "./core/fileProcessor";
+import { scanBlob } from "./core/scanic-loader";
 
 async function appendToLogFile(app: App, message: string) {
 	void app;
@@ -175,13 +175,47 @@ class CameraModal extends Modal {
 	}
 
 	async handleUploadFile(selectedFile: File) {
-		await processSelectedFile(
-			this.app,
-			selectedFile,
-			this.chosenFolderPath,
-			this.cameraSettings.showBoundingBox,
-			() => this.close(),
-		);
+		try {
+			new Notice("Scanning image...");
+
+			// Run Scanic on the uploaded file
+			const pngDataUrl = await scanBlob(selectedFile as Blob);
+
+			// Convert data URL → ArrayBuffer
+			const arrayBuffer = await (await fetch(pngDataUrl)).arrayBuffer();
+
+			// Build file path
+			const fileName = `scan-${Date.now()}.png`;
+			const filePath = `${this.chosenFolderPath}/${fileName}`;
+
+			// Ensure folder exists
+			const folder = this.app.vault.getAbstractFileByPath(this.chosenFolderPath);
+			if (!folder) {
+				await this.app.vault.createFolder(this.chosenFolderPath);
+			}
+
+			// Save scanned PNG
+			await this.app.vault.createBinary(filePath, arrayBuffer);
+
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (view) {
+				await appendToLogFile(
+					this.app,
+					`[handleUploadFile] inserting scanned image for ${fileName}`,
+				);
+				const cursor = view.editor.getCursor();
+				view.editor.replaceRange(`![${fileName}](${filePath})\n`, cursor);
+			} else {
+				new Notice(`Saved scanned image to ${filePath}`);
+			}
+
+			// Close modal
+			this.close();
+		} catch (error) {
+			console.error("Scanic upload failed:", error);
+			new Notice("Scan failed. Check the console for details.");
+			throw error;
+		}
 	}
 }
 

@@ -4,14 +4,12 @@ import { CameraPluginSettings } from "../ConfigTab";
 
 type PickerHandler = (selectedFile: File) => Promise<void>;
 
-function openHiddenFilePicker(
-	onSelect: PickerHandler,
-	capture?: string,
-) {
+function openHiddenFilePicker(onSelect: PickerHandler, capture?: string) {
 	const filePicker = document.createElement("input");
 	filePicker.type = "file";
 	filePicker.accept = "image/*";
 	filePicker.addClass("jzs-hidden");
+
 	if (capture) {
 		filePicker.capture = capture;
 	}
@@ -23,12 +21,14 @@ function openHiddenFilePicker(
 		window.removeEventListener("focus", handleWindowFocus);
 		filePicker.remove();
 	};
+
 	const handleWindowFocus = () => cleanup();
 
 	filePicker.onchange = async () => {
-		cleanup();
 		if (!filePicker.files?.length) return;
-		await onSelect(filePicker.files[0]);
+		const selectedFile = filePicker.files[0];
+		await onSelect(selectedFile);
+		cleanup();
 	};
 
 	document.body.appendChild(filePicker);

@@ -4,12 +4,16 @@ import ConfigTab, {
 	DEFAULT_SETTINGS,
 } from "./ConfigTab";
 import { triggerUpload } from "./core/filePicker";
-import { cleanupOpenCVLoader } from "./core/opencv-loader";
+import { initScanic } from "./core/scanic-loader";
 
 export default class SimpleScanner extends Plugin {
 	settings!: CameraPluginSettings;
 	async onload() {
 		await this.loadSettings();
+
+		// Initialize Scanic once on plugin load
+		await initScanic();
+
 		this.addRibbonIcon("camera", "Simple Scanner", () => {
 			triggerUpload(this.app, this.settings);
 		});
@@ -26,7 +30,7 @@ export default class SimpleScanner extends Plugin {
 	}
 
 	onunload() {
-		cleanupOpenCVLoader();
+		//nothing to do
 	}
 
 	async loadSettings() {
