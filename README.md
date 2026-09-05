@@ -1,4 +1,4 @@
-# Simple Scanner
+# Simple Scanner-Old
 
 Scanner plugin for Obsidian(https://obsidian.md).
 
@@ -26,8 +26,8 @@ Or
 -   Create a new folder called simple-scanner in `VaultFolder/.obsidian/plugins` folder
 -   Copy the `main.js` and `manifest.json` files to this folder
 -   reload Obsidian
--   enable "Simple Scanner" extension under Settings>Community plugins>Installed pluggins
--   On iOS, go to Settings > Toolbar and search for "Simple Scanner" to add it to the toolbar
+-   enable "Simple Scanner-Old" extension under Settings>Community plugins>Installed pluggins
+-   On iOS, go to Settings > Toolbar and search for "Simple Scanner-Old" to add it to the toolbar
 
 ## Usage:
 
