@@ -13,7 +13,7 @@ const prod = (process.argv[2] === 'production');
 
 // 👇 NEW: detect CI and choose output path
 const isCI = process.env.CI === 'true';
-const localOutfile = '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/simple-scanner-old/main.js';
+const localOutfile = '/Users/stoller/Documents/Obsidian/Plugin Dev Vault/.obsidian/plugins/simple-scanner/main.js';
 const ciOutfile = 'main.js';
 
 const buildOptions = {
