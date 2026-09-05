@@ -14,7 +14,7 @@ export default class SimpleScanner extends Plugin {
 		// Initialize Scanic once on plugin load
 		await initScanic();
 
-		this.addRibbonIcon("camera", "Simple Scanner-Old", () => {
+		this.addRibbonIcon("camera", "Simple Scanner", () => {
 			triggerUpload(this.app, this.settings);
 		});
 		this.addSettingTab(new ConfigTab(this.app, this));
